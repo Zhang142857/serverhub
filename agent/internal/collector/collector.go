@@ -367,21 +367,10 @@ func (c *Collector) GetMetrics() (*Metrics, error) {
 	metrics := &Metrics{}
 	now := time.Now()
 
-	// CPU 使用率 - 使用 200ms 间隔获取准确值
-	// 注意：cpu.Percent 需要一个时间间隔来计算差值
-	cpuPercent, err := cpu.Percent(time.Millisecond*200, false)
+	// CPU 使用率 - 使用 1 秒间隔确保准确
+	cpuPercent, err := cpu.Percent(time.Second, false)
 	if err == nil && len(cpuPercent) > 0 {
 		metrics.CpuUsage = cpuPercent[0]
-	} else {
-		// 备用方案：获取每个核心的使用率然后平均
-		perCore, err := cpu.Percent(time.Millisecond*200, true)
-		if err == nil && len(perCore) > 0 {
-			var total float64
-			for _, p := range perCore {
-				total += p
-			}
-			metrics.CpuUsage = total / float64(len(perCore))
-		}
 	}
 
 	// 内存使用率
