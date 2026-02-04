@@ -1,7 +1,11 @@
 package collector
 
 import (
+	"bufio"
+	"os"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +27,21 @@ type Collector struct {
 	// 上次采集的磁盘数据
 	lastDiskStats map[string]*DiskStat
 	lastDiskTime  time.Time
+	// 上次采集的 CPU 数据（用于计算使用率）
+	lastCpuStats *CpuStat
+	lastCpuTime  time.Time
+}
+
+// CpuStat CPU 统计（来自 /proc/stat）
+type CpuStat struct {
+	User    uint64
+	Nice    uint64
+	System  uint64
+	Idle    uint64
+	Iowait  uint64
+	Irq     uint64
+	Softirq uint64
+	Steal   uint64
 }
 
 // NetworkStat 网络统计
@@ -47,11 +66,84 @@ func New() *Collector {
 		lastNetworkStats: make(map[string]*NetworkStat),
 		lastDiskStats:    make(map[string]*DiskStat),
 	}
-	// 预热 CPU 采集，第一次调用会返回 0
+	// 预热 CPU 采集
 	cpu.Percent(time.Millisecond*100, false)
+	// 初始化 CPU 基准数据
+	c.lastCpuStats = c.readCpuStats()
+	c.lastCpuTime = time.Now()
 	// 初始化网络和磁盘基准数据
 	c.initBaselineStats()
 	return c
+}
+
+// readCpuStats 从 /proc/stat 读取 CPU 统计
+func (c *Collector) readCpuStats() *CpuStat {
+	file, err := os.Open("/proc/stat")
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "cpu ") {
+			fields := strings.Fields(line)
+			if len(fields) >= 8 {
+				stat := &CpuStat{}
+				stat.User, _ = strconv.ParseUint(fields[1], 10, 64)
+				stat.Nice, _ = strconv.ParseUint(fields[2], 10, 64)
+				stat.System, _ = strconv.ParseUint(fields[3], 10, 64)
+				stat.Idle, _ = strconv.ParseUint(fields[4], 10, 64)
+				stat.Iowait, _ = strconv.ParseUint(fields[5], 10, 64)
+				stat.Irq, _ = strconv.ParseUint(fields[6], 10, 64)
+				stat.Softirq, _ = strconv.ParseUint(fields[7], 10, 64)
+				if len(fields) >= 9 {
+					stat.Steal, _ = strconv.ParseUint(fields[8], 10, 64)
+				}
+				return stat
+			}
+		}
+	}
+	return nil
+}
+
+// calculateCpuUsage 计算 CPU 使用率
+func (c *Collector) calculateCpuUsage() float64 {
+	current := c.readCpuStats()
+	if current == nil || c.lastCpuStats == nil {
+		// 回退到 gopsutil
+		cpuPercent, err := cpu.Percent(time.Second, false)
+		if err == nil && len(cpuPercent) > 0 {
+			return cpuPercent[0]
+		}
+		return 0
+	}
+
+	// 计算差值
+	prevTotal := c.lastCpuStats.User + c.lastCpuStats.Nice + c.lastCpuStats.System +
+		c.lastCpuStats.Idle + c.lastCpuStats.Iowait + c.lastCpuStats.Irq +
+		c.lastCpuStats.Softirq + c.lastCpuStats.Steal
+	currTotal := current.User + current.Nice + current.System +
+		current.Idle + current.Iowait + current.Irq +
+		current.Softirq + current.Steal
+
+	prevIdle := c.lastCpuStats.Idle + c.lastCpuStats.Iowait
+	currIdle := current.Idle + current.Iowait
+
+	totalDiff := currTotal - prevTotal
+	idleDiff := currIdle - prevIdle
+
+	// 更新上次数据
+	c.lastCpuStats = current
+	c.lastCpuTime = time.Now()
+
+	if totalDiff == 0 {
+		return 0
+	}
+
+	usage := float64(totalDiff-idleDiff) / float64(totalDiff) * 100
+	return usage
 }
 
 // initBaselineStats 初始化基准统计数据
@@ -367,11 +459,8 @@ func (c *Collector) GetMetrics() (*Metrics, error) {
 	metrics := &Metrics{}
 	now := time.Now()
 
-	// CPU 使用率 - 使用 1 秒间隔确保准确
-	cpuPercent, err := cpu.Percent(time.Second, false)
-	if err == nil && len(cpuPercent) > 0 {
-		metrics.CpuUsage = cpuPercent[0]
-	}
+	// CPU 使用率 - 使用直接读取 /proc/stat 的方式
+	metrics.CpuUsage = c.calculateCpuUsage()
 
 	// 内存使用率
 	vmem, err := mem.VirtualMemory()
