@@ -111,24 +111,36 @@ check_and_free_port() {
     fi
 }
 
-# 安装依赖
-install_dependencies() {
-    log_step "安装必要依赖..."
+# 检查依赖
+check_dependencies() {
+    log_step "检查必要依赖..."
+    
+    local missing=()
+    
+    for cmd in curl tar; do
+        if ! command -v $cmd &>/dev/null; then
+            missing+=($cmd)
+        fi
+    done
+    
+    if [ ${#missing[@]} -eq 0 ]; then
+        log_success "依赖检查通过"
+        return 0
+    fi
+    
+    log_info "缺少依赖: ${missing[*]}，正在安装..."
     
     if command -v apt-get &>/dev/null; then
-        log_info "更新软件包列表..."
-        apt-get update -qq 2>&1 | while read line; do echo -e "  ${CYAN}>${NC} $line"; done
-        log_info "安装 curl tar openssl lsof..."
-        apt-get install -y curl tar openssl lsof 2>&1 | grep -E "^(Setting up|Unpacking|is already)" | while read line; do echo -e "  ${CYAN}>${NC} $line"; done
+        apt-get install -y "${missing[@]}" 2>&1 | grep -v "^$" | tail -5
     elif command -v yum &>/dev/null; then
-        log_info "安装依赖包..."
-        yum install -y curl tar openssl lsof 2>&1 | grep -E "^(Installing|Already)" | while read line; do echo -e "  ${CYAN}>${NC} $line"; done
+        yum install -y "${missing[@]}" 2>&1 | grep -v "^$" | tail -5
     elif command -v dnf &>/dev/null; then
-        log_info "安装依赖包..."
-        dnf install -y curl tar openssl lsof 2>&1 | grep -E "^(Installing|Already)" | while read line; do echo -e "  ${CYAN}>${NC} $line"; done
+        dnf install -y "${missing[@]}" 2>&1 | grep -v "^$" | tail -5
     elif command -v apk &>/dev/null; then
-        log_info "安装依赖包..."
-        apk add --no-cache curl tar openssl lsof 2>&1 | while read line; do echo -e "  ${CYAN}>${NC} $line"; done
+        apk add --no-cache "${missing[@]}" 2>&1 | grep -v "^$" | tail -5
+    else
+        log_error "无法安装依赖，请手动安装: ${missing[*]}"
+        exit 1
     fi
     
     log_success "依赖安装完成"
@@ -631,7 +643,7 @@ main() {
     log_info "发行版: $(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d'"' -f2 || echo 'Unknown')"
     echo ""
     
-    install_dependencies
+    check_dependencies
     stop_existing
     check_and_free_port "$PORT"
     configure_firewall
