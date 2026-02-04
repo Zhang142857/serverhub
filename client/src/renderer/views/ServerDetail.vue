@@ -9,7 +9,7 @@
         <el-tag :type="server?.status === 'connected' ? 'success' : 'info'">
           {{ server?.status === 'connected' ? '已连接' : '未连接' }}
         </el-tag>
-        <span class="uptime-badge" v-if="metrics.uptime">运行 {{ formatUptime(metrics.uptime) }}</span>
+        <span class="uptime-badge" v-if="systemInfo.uptime">运行 {{ formatUptime(systemInfo.uptime) }}</span>
       </div>
       <div class="header-actions">
         <el-button @click="refreshData" :loading="refreshing"><el-icon><Refresh /></el-icon>刷新</el-button>
@@ -18,147 +18,163 @@
       </div>
     </div>
 
-    <div class="info-grid">
-      <!-- 系统信息卡片 -->
-      <el-card class="info-card">
-        <template #header>系统信息</template>
-        <div class="info-list">
-          <div class="info-item">
-            <span class="label">主机名</span>
-            <span class="value">{{ simulatedSystemInfo.hostname }}</span>
-          </div>
-          <div class="info-item">
-            <span class="label">操作系统</span>
-            <span class="value">{{ simulatedSystemInfo.os }} {{ simulatedSystemInfo.arch }}</span>
-          </div>
-          <div class="info-item">
-            <span class="label">内核版本</span>
-            <span class="value">{{ simulatedSystemInfo.kernelVersion }}</span>
-          </div>
-          <div class="info-item">
-            <span class="label">运行时间</span>
-            <span class="value">{{ formatUptime(metrics.uptime) }}</span>
-          </div>
-        </div>
-      </el-card>
-
-      <!-- CPU 卡片 -->
-      <el-card class="info-card">
-        <template #header>CPU</template>
-        <div class="metric-display">
-          <div class="metric-chart">
-            <el-progress
-              type="dashboard"
-              :percentage="Math.round(metrics.cpu)"
-              :color="getProgressColor(metrics.cpu)"
-              :stroke-width="10"
-            />
-          </div>
-          <div class="metric-info">
-            <div class="info-item">
-              <span class="label">型号</span>
-              <span class="value">{{ simulatedSystemInfo.cpu?.model }}</span>
-            </div>
-            <div class="info-item">
-              <span class="label">核心数</span>
-              <span class="value">{{ simulatedSystemInfo.cpu?.cores }} 核</span>
-            </div>
-          </div>
-        </div>
-      </el-card>
-
-      <!-- 内存卡片 -->
-      <el-card class="info-card">
-        <template #header>内存</template>
-        <div class="metric-display">
-          <div class="metric-chart">
-            <el-progress
-              type="dashboard"
-              :percentage="Math.round(metrics.memory)"
-              :color="getProgressColor(metrics.memory)"
-              :stroke-width="10"
-            />
-          </div>
-          <div class="metric-info">
-            <div class="info-item">
-              <span class="label">总量</span>
-              <span class="value">{{ formatBytes(simulatedSystemInfo.memory?.total) }}</span>
-            </div>
-            <div class="info-item">
-              <span class="label">已用</span>
-              <span class="value">{{ formatBytes(simulatedSystemInfo.memory?.used) }}</span>
-            </div>
-          </div>
-        </div>
-      </el-card>
-
-      <!-- 网络卡片 -->
-      <el-card class="info-card">
-        <template #header>网络流量</template>
-        <div class="network-stats">
-          <div class="network-item">
-            <div class="network-label">
-              <span class="arrow up">↑</span>
-              <span>上传</span>
-            </div>
-            <div class="network-value">{{ metrics.networkOut.toFixed(1) }} MB/s</div>
-          </div>
-          <div class="network-item">
-            <div class="network-label">
-              <span class="arrow down">↓</span>
-              <span>下载</span>
-            </div>
-            <div class="network-value">{{ metrics.networkIn.toFixed(1) }} MB/s</div>
-          </div>
-        </div>
-      </el-card>
-
-      <!-- 磁盘卡片 -->
-      <el-card class="info-card disk-card">
-        <template #header>磁盘</template>
-        <div class="disk-list">
-          <div v-for="disk in simulatedSystemInfo.disks" :key="disk.mountpoint" class="disk-item">
-            <div class="disk-header">
-              <span class="disk-mount">{{ disk.mountpoint }}</span>
-              <span class="disk-usage">{{ disk.usedPercent.toFixed(1) }}%</span>
-            </div>
-            <el-progress
-              :percentage="disk.usedPercent"
-              :stroke-width="8"
-              :show-text="false"
-              :color="getProgressColor(disk.usedPercent)"
-            />
-            <div class="disk-size">
-              {{ formatBytes(disk.used) }} / {{ formatBytes(disk.total) }}
-            </div>
-          </div>
-        </div>
-      </el-card>
+    <div v-if="loading" class="loading-state">
+      <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+      <span>加载中...</span>
     </div>
 
-    <!-- 快捷操作 -->
-    <el-card class="quick-actions">
-      <template #header>快捷操作</template>
-      <div class="action-grid">
-        <el-button @click="executeQuickCommand('uptime')">查看运行时间</el-button>
-        <el-button @click="executeQuickCommand('df -h')">磁盘使用</el-button>
-        <el-button @click="executeQuickCommand('free -h')">内存使用</el-button>
-        <el-button @click="executeQuickCommand('top -bn1 | head -20')">进程列表</el-button>
-        <el-button @click="executeQuickCommand('docker ps')">Docker 容器</el-button>
-        <el-button @click="executeQuickCommand('systemctl list-units --failed')">失败服务</el-button>
-      </div>
-    </el-card>
+    <template v-else>
+      <div class="info-grid">
+        <!-- 系统信息卡片 -->
+        <el-card class="info-card">
+          <template #header>系统信息</template>
+          <div class="info-list">
+            <div class="info-item">
+              <span class="label">主机名</span>
+              <span class="value">{{ systemInfo.hostname }}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">操作系统</span>
+              <span class="value">{{ systemInfo.platform }} {{ systemInfo.arch }}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">内核版本</span>
+              <span class="value">{{ systemInfo.kernel_version || systemInfo.kernelVersion }}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">运行时间</span>
+              <span class="value">{{ formatUptime(systemInfo.uptime) }}</span>
+            </div>
+          </div>
+        </el-card>
 
-    <!-- 命令输出 -->
-    <el-card v-if="commandOutput" class="command-output">
-      <template #header>
-        <div class="output-header">
-          <span>命令输出</span>
-          <el-button text size="small" @click="commandOutput = ''">清除</el-button>
+        <!-- CPU 卡片 -->
+        <el-card class="info-card">
+          <template #header>CPU</template>
+          <div class="metric-display">
+            <div class="metric-chart">
+              <el-progress
+                type="dashboard"
+                :percentage="Math.round(metrics.cpu)"
+                :color="getProgressColor(metrics.cpu)"
+                :stroke-width="10"
+              />
+            </div>
+            <div class="metric-info">
+              <div class="info-item">
+                <span class="label">型号</span>
+                <span class="value">{{ systemInfo.cpu?.model || '-' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">核心数</span>
+                <span class="value">{{ systemInfo.cpu?.cores || '-' }} 核</span>
+              </div>
+              <div class="info-item">
+                <span class="label">负载</span>
+                <span class="value">{{ metrics.load1?.toFixed(2) || '-' }}</span>
+              </div>
+            </div>
+          </div>
+        </el-card>
+
+        <!-- 内存卡片 -->
+        <el-card class="info-card">
+          <template #header>内存</template>
+          <div class="metric-display">
+            <div class="metric-chart">
+              <el-progress
+                type="dashboard"
+                :percentage="Math.round(metrics.memory)"
+                :color="getProgressColor(metrics.memory)"
+                :stroke-width="10"
+              />
+            </div>
+            <div class="metric-info">
+              <div class="info-item">
+                <span class="label">总量</span>
+                <span class="value">{{ formatBytes(systemInfo.memory?.total) }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">已用</span>
+                <span class="value">{{ formatBytes(systemInfo.memory?.used) }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">可用</span>
+                <span class="value">{{ formatBytes(systemInfo.memory?.available) }}</span>
+              </div>
+            </div>
+          </div>
+        </el-card>
+
+        <!-- 网络卡片 -->
+        <el-card class="info-card">
+          <template #header>网络流量</template>
+          <div class="network-stats">
+            <div class="network-item">
+              <div class="network-label">
+                <span class="arrow up">↑</span>
+                <span>上传</span>
+              </div>
+              <div class="network-value">{{ formatBytesRate(metrics.networkOut) }}/s</div>
+            </div>
+            <div class="network-item">
+              <div class="network-label">
+                <span class="arrow down">↓</span>
+                <span>下载</span>
+              </div>
+              <div class="network-value">{{ formatBytesRate(metrics.networkIn) }}/s</div>
+            </div>
+          </div>
+        </el-card>
+
+        <!-- 磁盘卡片 -->
+        <el-card class="info-card disk-card">
+          <template #header>磁盘</template>
+          <div class="disk-list" v-if="systemInfo.disks?.length">
+            <div v-for="disk in systemInfo.disks" :key="disk.mountpoint" class="disk-item">
+              <div class="disk-header">
+                <span class="disk-mount">{{ disk.mountpoint }}</span>
+                <span class="disk-usage">{{ (disk.used_percent || disk.usedPercent || 0).toFixed(1) }}%</span>
+              </div>
+              <el-progress
+                :percentage="disk.used_percent || disk.usedPercent || 0"
+                :stroke-width="8"
+                :show-text="false"
+                :color="getProgressColor(disk.used_percent || disk.usedPercent || 0)"
+              />
+              <div class="disk-size">
+                {{ formatBytes(disk.used) }} / {{ formatBytes(disk.total) }}
+              </div>
+            </div>
+          </div>
+          <el-empty v-else description="暂无磁盘信息" :image-size="60" />
+        </el-card>
+      </div>
+
+      <!-- 快捷操作 -->
+      <el-card class="quick-actions">
+        <template #header>快捷操作</template>
+        <div class="action-grid">
+          <el-button @click="executeQuickCommand('uptime')">查看运行时间</el-button>
+          <el-button @click="executeQuickCommand('df -h')">磁盘使用</el-button>
+          <el-button @click="executeQuickCommand('free -h')">内存使用</el-button>
+          <el-button @click="executeQuickCommand('top -bn1 | head -20')">进程列表</el-button>
+          <el-button @click="executeQuickCommand('docker ps')">Docker 容器</el-button>
+          <el-button @click="executeQuickCommand('systemctl list-units --failed')">失败服务</el-button>
         </div>
-      </template>
-      <pre class="output-content">{{ commandOutput }}</pre>
-    </el-card>
+      </el-card>
+
+      <!-- 命令输出 -->
+      <el-card v-if="commandOutput" class="command-output">
+        <template #header>
+          <div class="output-header">
+            <span>命令输出</span>
+            <el-button text size="small" @click="commandOutput = ''">清除</el-button>
+          </div>
+        </template>
+        <pre class="output-content">{{ commandOutput }}</pre>
+      </el-card>
+    </template>
   </div>
 </template>
 
@@ -167,16 +183,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useServerStore } from '@/stores/server'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
-
-interface ServerMetric {
-  cpu: number
-  memory: number
-  disk: number
-  networkIn: number
-  networkOut: number
-  uptime: number
-}
+import { ArrowLeft, Refresh, Loading } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -184,117 +191,129 @@ const serverStore = useServerStore()
 
 const serverId = route.params.id as string
 const server = computed(() => serverStore.servers.find(s => s.id === serverId))
-const metrics = ref<ServerMetric>({ cpu: 0, memory: 0, disk: 0, networkIn: 0, networkOut: 0, uptime: 0 })
-const commandOutput = ref('')
+
+const loading = ref(true)
 const refreshing = ref(false)
-let metricsInterval: ReturnType<typeof setInterval> | null = null
+const commandOutput = ref('')
+const systemInfo = ref<any>({})
+const metrics = ref({
+  cpu: 0,
+  memory: 0,
+  disk: 0,
+  networkIn: 0,
+  networkOut: 0,
+  load1: 0,
+  load5: 0,
+  load15: 0
+})
 
-// 模拟系统信息
-const simulatedSystemInfo = {
-  hostname: server.value?.name || 'server-01',
-  os: 'Ubuntu 22.04.3 LTS',
-  arch: 'x86_64',
-  kernelVersion: '5.15.0-91-generic',
-  uptime: 1234567,
-  cpu: { model: 'Intel Xeon E5-2680 v4 @ 2.40GHz', cores: 8 },
-  memory: { total: 17179869184, used: 10737418240 },
-  disks: [
-    { mountpoint: '/', total: 536870912000, used: 161061273600, usedPercent: 30 },
-    { mountpoint: '/home', total: 1099511627776, used: 439804651110, usedPercent: 40 },
-    { mountpoint: '/var', total: 214748364800, used: 96636764160, usedPercent: 45 }
-  ]
-}
+let cleanupMetrics: (() => void) | null = null
 
-// 生成随机波动值
-function generateMetricValue(base: number, variance: number, min = 0, max = 100): number {
-  const change = (Math.random() - 0.5) * variance
-  return Math.max(min, Math.min(max, base + change))
-}
-
-// 初始化和更新指标
-function initMetrics() {
-  metrics.value = {
-    cpu: 35 + Math.random() * 20,
-    memory: 55 + Math.random() * 15,
-    disk: 35 + Math.random() * 10,
-    networkIn: 20 + Math.random() * 30,
-    networkOut: 10 + Math.random() * 20,
-    uptime: simulatedSystemInfo.uptime
-  }
-}
-
-function updateMetrics() {
-  metrics.value = {
-    cpu: generateMetricValue(metrics.value.cpu, 8, 10, 90),
-    memory: generateMetricValue(metrics.value.memory, 3, 30, 85),
-    disk: generateMetricValue(metrics.value.disk, 0.5, 20, 80),
-    networkIn: generateMetricValue(metrics.value.networkIn, 15, 5, 150),
-    networkOut: generateMetricValue(metrics.value.networkOut, 10, 2, 100),
-    uptime: metrics.value.uptime + 2
-  }
-}
-
-onMounted(() => {
-  initMetrics()
-  metricsInterval = setInterval(updateMetrics, 2000)
+onMounted(async () => {
+  await loadData()
 })
 
 onUnmounted(() => {
-  if (metricsInterval) clearInterval(metricsInterval)
+  if (cleanupMetrics) {
+    cleanupMetrics()
+  }
 })
 
-function refreshData() {
+async function loadData() {
+  loading.value = true
+  try {
+    // 获取系统信息
+    const info = await window.electronAPI.server.getSystemInfo(serverId)
+    if (info) {
+      systemInfo.value = info
+      // 初始化 metrics
+      metrics.value.cpu = info.cpu?.usage ?? info.cpu?.usedPercent ?? 0
+      metrics.value.memory = info.memory?.used_percent ?? info.memory?.usedPercent ?? 0
+      if (info.disks?.length) {
+        metrics.value.disk = info.disks.reduce((s: number, d: any) => s + (d.used_percent || d.usedPercent || 0), 0) / info.disks.length
+      }
+    }
+
+    // 启动实时指标流
+    await startMetricsStream()
+  } catch (e) {
+    console.error('Load data error:', e)
+    ElMessage.error('加载数据失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function startMetricsStream() {
+  try {
+    await window.electronAPI.server.startMetrics(serverId, 2)
+    cleanupMetrics = window.electronAPI.server.onMetrics(serverId, (m: any) => {
+      metrics.value.cpu = m.cpu_usage ?? 0
+      metrics.value.memory = m.memory_usage ?? 0
+      metrics.value.load1 = m.load_1 ?? 0
+      metrics.value.load5 = m.load_5 ?? 0
+      metrics.value.load15 = m.load_15 ?? 0
+      
+      // 计算网络流量（从 network_metrics 数组）
+      let netIn = 0, netOut = 0
+      if (m.network_metrics?.length) {
+        m.network_metrics.forEach((n: any) => {
+          netIn += n.bytes_recv || 0
+          netOut += n.bytes_sent || 0
+        })
+      }
+      metrics.value.networkIn = netIn
+      metrics.value.networkOut = netOut
+    })
+  } catch (e) {
+    console.error('Start metrics error:', e)
+  }
+}
+
+async function refreshData() {
   refreshing.value = true
-  setTimeout(() => {
-    initMetrics()
-    refreshing.value = false
+  try {
+    // 重新获取系统信息
+    const info = await window.electronAPI.server.getSystemInfo(serverId)
+    if (info) {
+      systemInfo.value = info
+    }
     ElMessage.success('数据已刷新')
-  }, 500)
+  } catch (e) {
+    ElMessage.error('刷新失败')
+  } finally {
+    refreshing.value = false
+  }
 }
 
 function openTerminal() {
-  router.push(`/terminal/${serverId}`)
+  serverStore.setCurrentServer(serverId)
+  router.push('/terminal')
 }
 
 function openFiles() {
-  router.push(`/files/${serverId}`)
+  serverStore.setCurrentServer(serverId)
+  router.push('/files')
 }
 
 async function executeQuickCommand(command: string) {
-  // 模拟命令执行
-  const outputs: Record<string, string> = {
-    'uptime': ' 20:45:32 up 14 days,  6:23,  2 users,  load average: 0.52, 0.48, 0.45',
-    'df -h': `Filesystem      Size  Used Avail Use% Mounted on
-/dev/sda1       500G  150G  350G  30% /
-/dev/sdb1       1.0T  400G  600G  40% /home
-/dev/sdc1       200G   90G  110G  45% /var
-tmpfs           7.8G  1.2M  7.8G   1% /run`,
-    'free -h': `              total        used        free      shared  buff/cache   available
-Mem:           16Gi       10Gi       2.1Gi       256Mi       3.8Gi       5.4Gi
-Swap:         4.0Gi       512Mi      3.5Gi`,
-    'top -bn1 | head -20': `top - 20:45:32 up 14 days,  6:23,  2 users,  load average: 0.52, 0.48, 0.45
-Tasks: 156 total,   1 running, 155 sleeping,   0 stopped,   0 zombie
-%Cpu(s): 35.2 us,  8.1 sy,  0.0 ni, 54.3 id,  1.8 wa,  0.0 hi,  0.6 si
-MiB Mem :  16384.0 total,   2150.4 free,  10240.0 used,   3993.6 buff/cache
-MiB Swap:   4096.0 total,   3584.0 free,    512.0 used.   5530.4 avail Mem
-
-  PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
- 1234 root      20   0 2456780 524288  45678 S  12.5   3.1   125:32 nginx
- 2345 mysql     20   0 4567890 1048576 65432 S   8.3   6.4   234:56 mysqld
- 3456 root      20   0 1234567 262144  32456 S   5.2   1.6    45:23 node
- 4567 www-data  20   0  987654 131072  21345 S   3.1   0.8    12:45 php-fpm`,
-    'docker ps': `CONTAINER ID   IMAGE          COMMAND                  STATUS          PORTS                    NAMES
-a1b2c3d4e5f6   nginx:latest   "/docker-entrypoint.…"   Up 5 days       0.0.0.0:80->80/tcp       nginx-proxy
-b2c3d4e5f6a7   mysql:8.0      "docker-entrypoint.s…"   Up 5 days       0.0.0.0:3306->3306/tcp   mysql-db
-c3d4e5f6a7b8   redis:7        "docker-entrypoint.s…"   Up 5 days       0.0.0.0:6379->6379/tcp   redis-cache
-d4e5f6a7b8c9   node:18        "docker-entrypoint.s…"   Up 3 days       0.0.0.0:3000->3000/tcp   app-backend`,
-    'systemctl list-units --failed': `  UNIT                         LOAD   ACTIVE SUB    DESCRIPTION
-0 loaded units listed.`
+  try {
+    commandOutput.value = `$ ${command}\n执行中...`
+    const result = await window.electronAPI.server.executeCommand(serverId, command, [], { timeout: 30 })
+    if (result.stdout) {
+      commandOutput.value = `$ ${command}\n${result.stdout}`
+    } else if (result.stderr) {
+      commandOutput.value = `$ ${command}\n${result.stderr}`
+    } else {
+      commandOutput.value = `$ ${command}\n命令执行完成 (exit code: ${result.exit_code})`
+    }
+  } catch (e) {
+    commandOutput.value = `$ ${command}\n执行失败: ${(e as Error).message}`
   }
-  commandOutput.value = outputs[command] || `$ ${command}\n命令执行完成`
 }
 
 function formatUptime(seconds: number): string {
+  if (!seconds) return '-'
   const days = Math.floor(seconds / 86400)
   const hours = Math.floor((seconds % 86400) / 3600)
   if (days > 0) return `${days}天${hours}小时`
@@ -308,6 +327,14 @@ function formatBytes(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+function formatBytesRate(bytes: number): string {
+  if (!bytes || bytes < 0) return '0 B'
+  if (bytes < 1024) return bytes.toFixed(0) + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(2) + ' MB'
+  return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB'
 }
 
 function getProgressColor(percentage: number): string {
@@ -334,16 +361,23 @@ function getProgressColor(percentage: number): string {
     align-items: center;
     gap: 12px;
 
-    h1 {
-      font-size: 24px;
-      font-weight: 600;
-    }
+    h1 { font-size: 24px; font-weight: 600; }
   }
 
   .header-actions {
     display: flex;
     gap: 12px;
   }
+}
+
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 300px;
+  color: var(--text-secondary);
 }
 
 .info-grid {
@@ -364,13 +398,8 @@ function getProgressColor(percentage: number): string {
     display: flex;
     justify-content: space-between;
 
-    .label {
-      color: var(--text-secondary);
-    }
-
-    .value {
-      font-family: monospace;
-    }
+    .label { color: var(--text-secondary); }
+    .value { font-family: monospace; font-size: 13px; }
   }
 }
 
@@ -378,9 +407,7 @@ function getProgressColor(percentage: number): string {
   display: flex;
   gap: 24px;
 
-  .metric-chart {
-    flex-shrink: 0;
-  }
+  .metric-chart { flex-shrink: 0; }
 
   .metric-info {
     flex: 1;
@@ -406,13 +433,8 @@ function getProgressColor(percentage: number): string {
       justify-content: space-between;
       margin-bottom: 8px;
 
-      .disk-mount {
-        font-family: monospace;
-      }
-
-      .disk-usage {
-        font-weight: 500;
-      }
+      .disk-mount { font-family: monospace; }
+      .disk-usage { font-weight: 500; }
     }
 
     .disk-size {
@@ -444,14 +466,8 @@ function getProgressColor(percentage: number): string {
       .arrow {
         font-size: 16px;
         font-weight: bold;
-
-        &.up {
-          color: #22c55e;
-        }
-
-        &.down {
-          color: #3b82f6;
-        }
+        &.up { color: #22c55e; }
+        &.down { color: #3b82f6; }
       }
     }
 
