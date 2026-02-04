@@ -174,80 +174,282 @@
       </template>
     </el-dialog>
 
-    <!-- 项目部署对话框 -->
-    <el-dialog v-model="showAddProject" title="项目部署" width="650px" class="dark-dialog">
-      <el-form :model="newProject" label-width="100px" size="small">
-        <el-form-item label="项目名称" required>
-          <el-input v-model="newProject.name" placeholder="my-app" />
-        </el-form-item>
-        <el-form-item label="项目类型" required>
-          <el-select v-model="newProject.type" style="width: 100%" @change="onProjectTypeChange">
-            <el-option value="nodejs" label="Node.js" />
-            <el-option value="python" label="Python" />
-            <el-option value="go" label="Go" />
-            <el-option value="java" label="Java" />
-            <el-option value="php" label="PHP" />
-            <el-option value="static-build" label="静态构建 (Vue/React)" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="域名" required>
-          <el-input v-model="newProject.domain" placeholder="app.example.com" />
-        </el-form-item>
-        <el-form-item label="项目目录" required>
-          <el-input v-model="newProject.path" placeholder="/var/www/my-app" />
-        </el-form-item>
-        <el-form-item label="运行端口" v-if="!['php', 'static-build'].includes(newProject.type)">
-          <el-input-number v-model="newProject.port" :min="1024" :max="65535" />
-        </el-form-item>
+    <!-- 项目部署对话框 - 多页面布局 -->
+    <el-dialog v-model="showAddProject" title="" width="900px" class="dark-dialog deploy-dialog" :show-close="true">
+      <div class="deploy-layout">
+        <!-- 左侧导航 -->
+        <div class="deploy-sidebar">
+          <div class="sidebar-header">
+            <el-icon class="header-icon"><Promotion /></el-icon>
+            <span>项目部署</span>
+          </div>
+          <div class="sidebar-nav">
+            <div 
+              v-for="(item, index) in deploySteps" 
+              :key="item.key"
+              class="nav-item"
+              :class="{ active: deployStep === item.key, completed: index < deployStepIndex }"
+              @click="deployStep = item.key"
+            >
+              <div class="nav-icon">
+                <el-icon v-if="index < deployStepIndex"><Check /></el-icon>
+                <span v-else>{{ index + 1 }}</span>
+              </div>
+              <div class="nav-text">
+                <div class="nav-title">{{ item.title }}</div>
+                <div class="nav-desc">{{ item.desc }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-        <el-divider content-position="left">构建工作流</el-divider>
+        <!-- 右侧内容 -->
+        <div class="deploy-content">
+          <!-- 步骤1: 基本信息 -->
+          <div v-show="deployStep === 'basic'" class="step-content">
+            <div class="step-header">
+              <h3>基本信息</h3>
+              <p>设置项目名称和类型</p>
+            </div>
+            <el-form :model="newProject" label-position="top" size="default">
+              <el-form-item label="项目名称" required>
+                <el-input v-model="newProject.name" placeholder="my-app" />
+                <div class="form-tip">用于标识项目，建议使用英文和短横线</div>
+              </el-form-item>
+              <el-form-item label="项目类型" required>
+                <el-select v-model="newProject.type" style="width: 100%" @change="onProjectTypeChange">
+                  <el-option value="nodejs" label="Node.js (Express/Koa/NestJS)" />
+                  <el-option value="python" label="Python (Flask/Django/FastAPI)" />
+                  <el-option value="go" label="Go (Gin/Echo/Fiber)" />
+                  <el-option value="java" label="Java (Spring Boot)" />
+                  <el-option value="php" label="PHP (Laravel/ThinkPHP)" />
+                  <el-option value="static-build" label="静态构建 (Vue/React/Next.js)" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="项目目录" required>
+                <el-input v-model="newProject.path" placeholder="/var/www/my-app" />
+                <div class="form-tip">项目代码存放的服务器目录</div>
+              </el-form-item>
+              <el-form-item label="运行端口" v-if="!['php', 'static-build'].includes(newProject.type)">
+                <el-input-number v-model="newProject.port" :min="1024" :max="65535" style="width: 100%" />
+                <div class="form-tip">应用监听的端口，Nginx 会将请求转发到此端口</div>
+              </el-form-item>
+            </el-form>
+          </div>
 
-        <el-form-item label="构建步骤">
-          <div class="workflow-steps">
-            <div v-for="(step, index) in newProject.buildSteps" :key="index" class="workflow-step">
-              <el-input v-model="step.command" placeholder="npm install" style="flex: 1" />
-              <el-button text type="danger" @click="removeBuildStep(index)">
-                <el-icon><Delete /></el-icon>
+          <!-- 步骤2: 域名设置 -->
+          <div v-show="deployStep === 'domain'" class="step-content">
+            <div class="step-header">
+              <h3>域名设置</h3>
+              <p>配置访问域名，让用户可以通过域名访问你的应用</p>
+            </div>
+
+            <!-- 服务器 IP 信息卡片 -->
+            <div class="server-ip-card">
+              <div class="ip-header">
+                <el-icon><Monitor /></el-icon>
+                <span>服务器信息</span>
+              </div>
+              <div class="ip-content">
+                <div class="ip-item">
+                  <span class="ip-label">公网 IP</span>
+                  <code class="ip-value">{{ serverPublicIP || '获取中...' }}</code>
+                  <el-button text size="small" @click="copyIP(serverPublicIP)">
+                    <el-icon><CopyDocument /></el-icon>
+                  </el-button>
+                </div>
+                <div class="ip-item" v-if="serverLocalIP">
+                  <span class="ip-label">内网 IP</span>
+                  <code class="ip-value">{{ serverLocalIP }}</code>
+                </div>
+              </div>
+            </div>
+
+            <el-form :model="newProject" label-position="top" size="default">
+              <el-form-item label="访问方式">
+                <el-radio-group v-model="newProject.domainType" class="domain-type-group">
+                  <el-radio value="ip" class="domain-radio">
+                    <div class="radio-content">
+                      <div class="radio-title">使用 IP 访问</div>
+                      <div class="radio-desc">直接通过服务器 IP 访问，无需域名</div>
+                    </div>
+                  </el-radio>
+                  <el-radio value="domain" class="domain-radio">
+                    <div class="radio-content">
+                      <div class="radio-title">使用域名访问</div>
+                      <div class="radio-desc">需要先将域名解析到服务器 IP</div>
+                    </div>
+                  </el-radio>
+                </el-radio-group>
+              </el-form-item>
+
+              <template v-if="newProject.domainType === 'ip'">
+                <el-form-item label="访问地址">
+                  <el-input :model-value="`${serverPublicIP}:${newProject.port || 80}`" disabled>
+                    <template #prepend>http://</template>
+                  </el-input>
+                  <div class="form-tip">部署完成后，可通过此地址访问应用</div>
+                </el-form-item>
+              </template>
+
+              <template v-else>
+                <el-form-item label="域名" required>
+                  <el-input v-model="newProject.domain" placeholder="app.example.com">
+                    <template #prepend>http(s)://</template>
+                  </el-input>
+                </el-form-item>
+
+                <!-- 域名配置指引 -->
+                <div class="domain-guide">
+                  <div class="guide-header">
+                    <el-icon><InfoFilled /></el-icon>
+                    <span>域名配置指引</span>
+                  </div>
+                  <div class="guide-steps">
+                    <div class="guide-step">
+                      <div class="step-num">1</div>
+                      <div class="step-text">
+                        <div class="step-title">登录域名服务商</div>
+                        <div class="step-desc">如阿里云、腾讯云、Cloudflare 等</div>
+                      </div>
+                    </div>
+                    <div class="guide-step">
+                      <div class="step-num">2</div>
+                      <div class="step-text">
+                        <div class="step-title">添加 DNS 解析记录</div>
+                        <div class="step-desc">
+                          类型: <code>A</code>，主机记录: <code>{{ getDomainPrefix(newProject.domain) || 'app' }}</code>，记录值: <code>{{ serverPublicIP }}</code>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="guide-step">
+                      <div class="step-num">3</div>
+                      <div class="step-text">
+                        <div class="step-title">等待生效</div>
+                        <div class="step-desc">DNS 解析通常需要几分钟到几小时生效</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </el-form>
+          </div>
+
+          <!-- 步骤3: 部署设置 -->
+          <div v-show="deployStep === 'deploy'" class="step-content">
+            <div class="step-header">
+              <h3>部署设置</h3>
+              <p>配置构建和启动流程</p>
+            </div>
+            <el-form :model="newProject" label-position="top" size="default">
+              <el-form-item label="构建步骤">
+                <div class="workflow-steps">
+                  <div v-for="(step, index) in newProject.buildSteps" :key="index" class="workflow-step">
+                    <div class="step-number">{{ index + 1 }}</div>
+                    <el-input v-model="step.command" placeholder="npm install" />
+                    <el-button text type="danger" @click="removeBuildStep(index)" :disabled="newProject.buildSteps.length <= 1">
+                      <el-icon><Delete /></el-icon>
+                    </el-button>
+                  </div>
+                  <el-button class="add-step-btn" @click="addBuildStep">
+                    <el-icon><Plus /></el-icon> 添加构建步骤
+                  </el-button>
+                </div>
+                <div class="form-tip">按顺序执行的构建命令，如安装依赖、编译代码等</div>
+              </el-form-item>
+
+              <el-form-item label="启动命令" v-if="!['php', 'static-build'].includes(newProject.type)">
+                <el-input v-model="newProject.startCommand" :placeholder="getDefaultStartCommand(newProject.type)" />
+                <div class="form-tip">应用启动命令，将作为 systemd 服务运行</div>
+              </el-form-item>
+
+              <el-form-item label="输出目录" v-if="newProject.type === 'static-build'">
+                <el-input v-model="newProject.outputDir" placeholder="dist" />
+                <div class="form-tip">构建产物目录，Nginx 将直接托管此目录</div>
+              </el-form-item>
+
+              <el-form-item label="环境变量">
+                <div class="env-vars">
+                  <div v-for="(env, index) in newProject.envVars" :key="index" class="env-var-row">
+                    <el-input v-model="env.key" placeholder="变量名" style="width: 140px" />
+                    <span class="env-eq">=</span>
+                    <el-input v-model="env.value" placeholder="变量值" style="flex: 1" :type="env.key.toLowerCase().includes('secret') || env.key.toLowerCase().includes('password') ? 'password' : 'text'" show-password />
+                    <el-button text type="danger" @click="removeEnvVar(index)">
+                      <el-icon><Delete /></el-icon>
+                    </el-button>
+                  </div>
+                  <el-button class="add-step-btn" @click="addEnvVar">
+                    <el-icon><Plus /></el-icon> 添加环境变量
+                  </el-button>
+                </div>
+              </el-form-item>
+            </el-form>
+          </div>
+
+          <!-- 步骤4: SSL 设置 -->
+          <div v-show="deployStep === 'ssl'" class="step-content">
+            <div class="step-header">
+              <h3>SSL 证书</h3>
+              <p>启用 HTTPS 加密访问</p>
+            </div>
+            <el-form :model="newProject" label-position="top" size="default">
+              <el-form-item>
+                <div class="ssl-option-cards">
+                  <div 
+                    class="ssl-card" 
+                    :class="{ active: !newProject.ssl }"
+                    @click="newProject.ssl = false"
+                  >
+                    <el-icon class="ssl-icon"><Unlock /></el-icon>
+                    <div class="ssl-title">HTTP</div>
+                    <div class="ssl-desc">不启用 SSL，使用 HTTP 访问</div>
+                  </div>
+                  <div 
+                    class="ssl-card" 
+                    :class="{ active: newProject.ssl }"
+                    @click="newProject.ssl = true"
+                  >
+                    <el-icon class="ssl-icon"><Lock /></el-icon>
+                    <div class="ssl-title">HTTPS</div>
+                    <div class="ssl-desc">启用 SSL，使用 Let's Encrypt 免费证书</div>
+                  </div>
+                </div>
+              </el-form-item>
+
+              <template v-if="newProject.ssl">
+                <el-alert type="info" :closable="false" show-icon>
+                  <template #title>
+                    <span>SSL 证书将在项目创建后自动申请</span>
+                  </template>
+                  <template #default>
+                    <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
+                      使用 Let's Encrypt 免费证书，需要确保：<br>
+                      1. 域名已正确解析到服务器 IP<br>
+                      2. 服务器 80 端口可被外网访问
+                    </div>
+                  </template>
+                </el-alert>
+              </template>
+            </el-form>
+          </div>
+
+          <!-- 底部操作栏 -->
+          <div class="deploy-footer">
+            <el-button @click="showAddProject = false">取消</el-button>
+            <div class="footer-right">
+              <el-button v-if="deployStepIndex > 0" @click="prevDeployStep">
+                <el-icon><ArrowLeft /></el-icon> 上一步
+              </el-button>
+              <el-button v-if="deployStepIndex < deploySteps.length - 1" type="primary" @click="nextDeployStep">
+                下一步 <el-icon><ArrowRight /></el-icon>
+              </el-button>
+              <el-button v-else type="primary" @click="createProject" :loading="creating">
+                <el-icon><Check /></el-icon> 创建项目
               </el-button>
             </div>
-            <el-button text type="primary" @click="addBuildStep">
-              <el-icon><Plus /></el-icon> 添加步骤
-            </el-button>
           </div>
-        </el-form-item>
-
-        <el-form-item label="启动命令" v-if="!['php', 'static-build'].includes(newProject.type)">
-          <el-input v-model="newProject.startCommand" :placeholder="getDefaultStartCommand(newProject.type)" />
-        </el-form-item>
-
-        <el-form-item label="输出目录" v-if="newProject.type === 'static-build'">
-          <el-input v-model="newProject.outputDir" placeholder="dist" />
-        </el-form-item>
-
-        <el-form-item label="环境变量">
-          <div class="env-vars">
-            <div v-for="(env, index) in newProject.envVars" :key="index" class="env-var-row">
-              <el-input v-model="env.key" placeholder="KEY" style="width: 120px" />
-              <span class="env-eq">=</span>
-              <el-input v-model="env.value" placeholder="value" style="flex: 1" />
-              <el-button text type="danger" @click="removeEnvVar(index)">
-                <el-icon><Delete /></el-icon>
-              </el-button>
-            </div>
-            <el-button text type="primary" @click="addEnvVar">
-              <el-icon><Plus /></el-icon> 添加变量
-            </el-button>
-          </div>
-        </el-form-item>
-
-        <el-form-item label="启用 SSL">
-          <el-switch v-model="newProject.ssl" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button size="small" @click="showAddProject = false">取消</el-button>
-        <el-button type="primary" size="small" @click="createProject" :loading="creating">创建项目</el-button>
-      </template>
+        </div>
+      </div>
     </el-dialog>
 
     <!-- 部署日志对话框 -->
@@ -329,7 +531,7 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useServerStore } from '@/stores/server'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, Lock, Delete, ArrowDown } from '@element-plus/icons-vue'
+import { Plus, Refresh, Lock, Delete, ArrowDown, Check, Promotion, Monitor, CopyDocument, InfoFilled, Unlock, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import TechIcon from '@/components/icons/TechIcons.vue'
 
 interface Site {
@@ -396,13 +598,27 @@ const logPre = ref<HTMLPreElement | null>(null)
 const newSite = ref({ name: '', domain: '', path: '/var/www', ssl: false })
 const newProxy = ref({ name: '', domain: '', upstream: 'http://127.0.0.1:3000', websocket: false, ssl: false })
 const newProject = ref<{
-  name: string; type: string; domain: string; path: string; port: number; ssl: boolean;
+  name: string; type: string; domain: string; domainType: string; path: string; port: number; ssl: boolean;
   buildSteps: BuildStep[]; startCommand: string; outputDir: string; envVars: EnvVar[]
 }>({
-  name: '', type: 'nodejs', domain: '', path: '/var/www', port: 3000, ssl: false,
+  name: '', type: 'nodejs', domain: '', domainType: 'domain', path: '/var/www', port: 3000, ssl: false,
   buildSteps: [{ command: 'npm install' }, { command: 'npm run build' }],
   startCommand: 'npm start', outputDir: 'dist', envVars: []
 })
+
+// 部署步骤导航
+const deployStep = ref('basic')
+const deploySteps = [
+  { key: 'basic', title: '基本信息', desc: '项目名称和类型' },
+  { key: 'domain', title: '域名设置', desc: '配置访问地址' },
+  { key: 'deploy', title: '部署设置', desc: '构建和启动流程' },
+  { key: 'ssl', title: 'SSL 证书', desc: 'HTTPS 加密' }
+]
+const deployStepIndex = computed(() => deploySteps.findIndex(s => s.key === deployStep.value))
+
+// 服务器 IP
+const serverPublicIP = ref('')
+const serverLocalIP = ref('')
 
 const connectedServers = computed(() => serverStore.connectedServers)
 const hasMultipleServers = computed(() => serverStore.hasMultipleServers)
@@ -468,10 +684,71 @@ function handleAddCommand(cmd: string) {
 
 function resetNewProject() {
   newProject.value = {
-    name: '', type: 'nodejs', domain: '', path: '/var/www', port: 3000, ssl: false,
+    name: '', type: 'nodejs', domain: '', domainType: 'domain', path: '/var/www', port: 3000, ssl: false,
     buildSteps: [{ command: 'npm install' }, { command: 'npm run build' }],
     startCommand: 'npm start', outputDir: 'dist', envVars: []
   }
+  deployStep.value = 'basic'
+  fetchServerIP()
+}
+
+async function fetchServerIP() {
+  if (!selectedServer.value) return
+  try {
+    // 获取公网 IP
+    const pubResult = await window.electronAPI.server.executeCommand(
+      selectedServer.value, 'bash', ['-c', 'curl -fsSL --connect-timeout 3 ifconfig.me 2>/dev/null || curl -fsSL --connect-timeout 3 ipinfo.io/ip 2>/dev/null']
+    )
+    serverPublicIP.value = (pubResult.stdout || '').trim()
+    
+    // 获取内网 IP
+    const localResult = await window.electronAPI.server.executeCommand(
+      selectedServer.value, 'bash', ['-c', "hostname -I 2>/dev/null | awk '{print $1}'"]
+    )
+    serverLocalIP.value = (localResult.stdout || '').trim()
+  } catch {
+    serverPublicIP.value = '获取失败'
+  }
+}
+
+function copyIP(ip: string) {
+  if (!ip) return
+  navigator.clipboard.writeText(ip)
+  ElMessage.success('已复制到剪贴板')
+}
+
+function getDomainPrefix(domain: string): string {
+  if (!domain) return ''
+  const parts = domain.split('.')
+  if (parts.length > 2) return parts[0]
+  return '@'
+}
+
+function prevDeployStep() {
+  const idx = deployStepIndex.value
+  if (idx > 0) deployStep.value = deploySteps[idx - 1].key
+}
+
+function nextDeployStep() {
+  // 验证当前步骤
+  if (deployStep.value === 'basic') {
+    if (!newProject.value.name) {
+      ElMessage.warning('请输入项目名称')
+      return
+    }
+  } else if (deployStep.value === 'domain') {
+    if (newProject.value.domainType === 'domain' && !newProject.value.domain) {
+      ElMessage.warning('请输入域名')
+      return
+    }
+    // 如果使用 IP 访问，设置域名为 IP
+    if (newProject.value.domainType === 'ip') {
+      newProject.value.domain = serverPublicIP.value
+    }
+  }
+  
+  const idx = deployStepIndex.value
+  if (idx < deploySteps.length - 1) deployStep.value = deploySteps[idx + 1].key
 }
 
 function onProjectTypeChange(type: string) {
@@ -1101,5 +1378,353 @@ function formatTime(ts: number): string {
   .el-dialog__title { color: var(--text-color); }
   .el-dialog__body { background: var(--bg-secondary); }
   .el-dialog__footer { background: var(--bg-secondary); border-top: 1px solid var(--border-color); }
+}
+
+// 部署对话框样式
+:deep(.deploy-dialog) {
+  .el-dialog__header { display: none; }
+  .el-dialog__body { padding: 0; }
+}
+
+.deploy-layout {
+  display: flex;
+  min-height: 550px;
+}
+
+.deploy-sidebar {
+  width: 240px;
+  background: var(--bg-tertiary);
+  border-right: 1px solid var(--border-color);
+  flex-shrink: 0;
+
+  .sidebar-header {
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-color);
+
+    .header-icon {
+      font-size: 20px;
+      color: var(--primary-color);
+    }
+  }
+
+  .sidebar-nav {
+    padding: 12px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 4px;
+
+    &:hover {
+      background: var(--bg-secondary);
+    }
+
+    &.active {
+      background: var(--primary-color);
+      .nav-title { color: #fff; }
+      .nav-desc { color: rgba(255,255,255,0.7); }
+      .nav-icon { background: rgba(255,255,255,0.2); color: #fff; }
+    }
+
+    &.completed .nav-icon {
+      background: #22c55e;
+      color: #fff;
+    }
+
+    .nav-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--bg-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .nav-text {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .nav-title {
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+
+    .nav-desc {
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+  }
+}
+
+.deploy-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.step-content {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+
+  .step-header {
+    margin-bottom: 24px;
+    h3 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    p {
+      color: var(--text-secondary);
+      font-size: 13px;
+    }
+  }
+
+  .form-tip {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+}
+
+.server-ip-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin-bottom: 20px;
+
+  .ip-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+    font-size: 13px;
+  }
+
+  .ip-content {
+    padding: 12px 16px;
+  }
+
+  .ip-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+    &:last-child { margin-bottom: 0; }
+
+    .ip-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      width: 60px;
+    }
+
+    .ip-value {
+      font-family: 'Consolas', monospace;
+      font-size: 14px;
+      background: var(--bg-secondary);
+      padding: 4px 10px;
+      border-radius: 4px;
+      color: var(--primary-color);
+    }
+  }
+}
+
+.domain-type-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+
+  .domain-radio {
+    margin-right: 0;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    height: auto;
+    transition: all 0.2s;
+
+    &.is-checked {
+      border-color: var(--primary-color);
+      background: rgba(99, 102, 241, 0.1);
+    }
+
+    .radio-content {
+      .radio-title {
+        font-weight: 500;
+        margin-bottom: 4px;
+      }
+      .radio-desc {
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+    }
+  }
+}
+
+.domain-guide {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin-top: 16px;
+
+  .guide-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--primary-color);
+  }
+
+  .guide-steps {
+    padding: 16px;
+  }
+
+  .guide-step {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    &:last-child { margin-bottom: 0; }
+
+    .step-num {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--primary-color);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .step-title {
+      font-weight: 500;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    .step-desc {
+      font-size: 12px;
+      color: var(--text-secondary);
+      code {
+        background: var(--bg-secondary);
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-family: 'Consolas', monospace;
+        color: var(--primary-color);
+      }
+    }
+  }
+}
+
+.workflow-steps {
+  .workflow-step {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+
+    .step-number {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--bg-tertiary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+    }
+  }
+
+  .add-step-btn {
+    margin-top: 8px;
+  }
+}
+
+.ssl-option-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  width: 100%;
+
+  .ssl-card {
+    padding: 24px;
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+      border-color: var(--primary-color);
+    }
+
+    &.active {
+      border-color: var(--primary-color);
+      background: rgba(99, 102, 241, 0.1);
+    }
+
+    .ssl-icon {
+      font-size: 32px;
+      margin-bottom: 12px;
+      color: var(--text-secondary);
+    }
+
+    &.active .ssl-icon {
+      color: var(--primary-color);
+    }
+
+    .ssl-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .ssl-desc {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+  }
+}
+
+.deploy-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-secondary);
+
+  .footer-right {
+    display: flex;
+    gap: 8px;
+  }
 }
 </style>
