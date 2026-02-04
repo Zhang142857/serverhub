@@ -16,8 +16,9 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist/main',
+            // 不再将 grpc 相关模块设为 external，让它们被打包进 bundle
             rollupOptions: {
-              external: ['@grpc/grpc-js', '@grpc/proto-loader']
+              external: ['electron']
             }
           }
         }

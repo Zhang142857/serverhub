@@ -13,8 +13,7 @@
     "preview": "vite preview",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "typecheck": "vue-tsc --noEmit",
-    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
-    "proto:generate": "grpc_tools_node_protoc --js_out=import_style=commonjs,binary:./src/main/grpc/generated --grpc_out=grpc_js:./src/main/grpc/generated --plugin=protoc-gen-grpc=./node_modules/.bin/grpc_tools_node_protoc_plugin.cmd -I ../proto ../proto/*.proto"
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
@@ -54,11 +53,26 @@
   "build": {
     "appId": "com.serverhub.client",
     "productName": "ServerHub",
+    "asar": true,
     "directories": {
       "output": "release"
     },
     "files": [
-      "dist/**/*"
+      "dist/**/*",
+      "node_modules/**/*",
+      "!node_modules/.pnpm",
+      "!node_modules/**/test/**",
+      "!node_modules/**/tests/**",
+      "!node_modules/**/*.md",
+      "!node_modules/**/*.ts",
+      "!node_modules/**/LICENSE*",
+      "!node_modules/**/CHANGELOG*"
+    ],
+    "extraResources": [
+      {
+        "from": "../proto",
+        "to": "proto"
+      }
     ],
     "win": {
       "target": [
@@ -83,6 +97,5 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": false
     }
-  },
-  "optionalDependencies": {}
+  }
 }

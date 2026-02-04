@@ -2,6 +2,7 @@ import * as grpc from '@grpc/grpc-js'
 import * as protoLoader from '@grpc/proto-loader'
 import { join } from 'path'
 import { EventEmitter } from 'events'
+import { app } from 'electron'
 import type {
   ServerConfig,
   ApiSystemInfo,
@@ -13,7 +14,16 @@ import type {
   ProcessInfo
 } from '../../types'
 
-const PROTO_PATH = join(__dirname, '../../../../proto/agent.proto')
+// 根据运行环境确定 proto 文件路径
+function getProtoPath(): string {
+  if (app.isPackaged) {
+    // 打包后从 resources 目录加载
+    return join(process.resourcesPath, 'proto', 'agent.proto')
+  } else {
+    // 开发环境从项目根目录加载
+    return join(__dirname, '../../../../proto/agent.proto')
+  }
+}
 
 // gRPC 响应类型
 interface ActionResponse {
@@ -49,6 +59,7 @@ export class GrpcClient extends EventEmitter {
   }
 
   async connect(): Promise<void> {
+    const PROTO_PATH = getProtoPath()
     const packageDefinition = await protoLoader.load(PROTO_PATH, {
       keepCase: true,
       longs: String,

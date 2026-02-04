@@ -4,16 +4,13 @@ package serverhub;
 
 option go_package = "github.com/serverhub/agent/api/proto";
 
-import "google/protobuf/empty.proto";
-import "google/protobuf/timestamp.proto";
-
-// AgentService - 核心Agent服务（命令和文件操作代理）
+// AgentService - 核心Agent服务
 service AgentService {
   // 认证
   rpc Authenticate(AuthRequest) returns (AuthResponse);
 
   // 系统信息
-  rpc GetSystemInfo(google.protobuf.Empty) returns (SystemInfo);
+  rpc GetSystemInfo(Empty) returns (SystemInfo);
   rpc GetMetrics(MetricsRequest) returns (stream Metrics);
 
   // 命令执行
@@ -25,8 +22,6 @@ service AgentService {
   rpc WriteFile(WriteFileRequest) returns (ActionResponse);
   rpc ListDirectory(DirRequest) returns (DirContent);
   rpc DeleteFile(FileRequest) returns (ActionResponse);
-  rpc UploadFile(stream FileChunk) returns (ActionResponse);
-  rpc DownloadFile(FileRequest) returns (stream FileChunk);
 
   // 日志流
   rpc TailLog(LogRequest) returns (stream LogLine);
@@ -39,6 +34,9 @@ service AgentService {
   rpc ListProcesses(ProcessFilter) returns (ProcessList);
   rpc KillProcess(KillProcessRequest) returns (ActionResponse);
 }
+
+// 空消息
+message Empty {}
 
 // 认证相关
 message AuthRequest {
@@ -63,13 +61,10 @@ message SystemInfo {
   string arch = 6;
   int64 uptime = 7;
   int64 boot_time = 8;
-
   CpuInfo cpu = 10;
   MemoryInfo memory = 11;
   repeated DiskInfo disks = 12;
   repeated NetworkInfo networks = 13;
-
-  // GPU信息（可选）
   repeated GpuInfo gpus = 20;
 }
 
@@ -119,12 +114,12 @@ message GpuInfo {
 
 // 监控指标
 message MetricsRequest {
-  int32 interval_seconds = 1;  // 采集间隔
-  repeated string metrics = 2;  // 指定采集的指标类型
+  int32 interval_seconds = 1;
+  repeated string metrics = 2;
 }
 
 message Metrics {
-  google.protobuf.Timestamp timestamp = 1;
+  int64 timestamp = 1;
   double cpu_usage = 2;
   double memory_usage = 3;
   repeated DiskMetric disk_metrics = 4;
@@ -176,7 +171,7 @@ message ShellInput {
 }
 
 message ShellStart {
-  string shell = 1;  // bash, zsh, sh
+  string shell = 1;
   int32 rows = 2;
   int32 cols = 3;
   map<string, string> env = 4;
@@ -230,13 +225,6 @@ message DirContent {
   repeated FileInfo files = 2;
 }
 
-message FileChunk {
-  string path = 1;
-  bytes data = 2;
-  int64 offset = 3;
-  bool is_last = 4;
-}
-
 // 日志
 message LogRequest {
   string path = 1;
@@ -246,7 +234,7 @@ message LogRequest {
 
 message LogLine {
   string content = 1;
-  google.protobuf.Timestamp timestamp = 2;
+  int64 timestamp = 2;
 }
 
 // 服务管理
@@ -306,7 +294,7 @@ message ProcessInfo {
 
 message KillProcessRequest {
   int32 pid = 1;
-  int32 signal = 2;  // 默认 SIGTERM (15)
+  int32 signal = 2;
 }
 
 // 通用响应

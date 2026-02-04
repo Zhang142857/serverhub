@@ -11,6 +11,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	pb "github.com/serverhub/agent/api/proto"
 	"github.com/serverhub/agent/internal/auth"
 	"github.com/serverhub/agent/internal/server"
 	"github.com/spf13/viper"
@@ -144,7 +145,7 @@ func run() error {
 
 	// 注册服务
 	agentServer := server.NewAgentServer(version)
-	server.RegisterAgentServiceServer(grpcServer, agentServer)
+	pb.RegisterAgentServiceServer(grpcServer, agentServer)
 
 	// 优雅关闭
 	ctx, cancel := context.WithCancel(context.Background())
