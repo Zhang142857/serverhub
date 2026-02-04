@@ -26,18 +26,27 @@ type AgentServer struct {
 	pb.UnimplementedAgentServiceServer
 	version   string
 	collector *collector.Collector
+	token     string // 存储 token 用于 Authenticate 验证
 }
 
 // NewAgentServer 创建新的 AgentServer
-func NewAgentServer(version string) *AgentServer {
+func NewAgentServer(version string, token string) *AgentServer {
 	return &AgentServer{
 		version:   version,
 		collector: collector.New(),
+		token:     token,
 	}
 }
 
 // Authenticate 认证
 func (s *AgentServer) Authenticate(ctx context.Context, req *pb.AuthRequest) (*pb.AuthResponse, error) {
+	// 验证 token
+	if s.token != "" && req.Token != s.token {
+		return &pb.AuthResponse{
+			Success: false,
+			Message: "认证令牌无效",
+		}, nil
+	}
 	return &pb.AuthResponse{
 		Success:      true,
 		Message:      "认证成功",

@@ -282,8 +282,8 @@ async function startMetrics(serverId: string) {
     // 启动指标流
     await window.electronAPI.server.startMetrics(serverId, 2)
     const cleanup = window.electronAPI.server.onMetrics(serverId, (m) => {
-      const cpu = m.cpu_usage ?? m.cpuUsage ?? 0
-      const mem = m.memory_usage ?? m.memoryUsage ?? 0
+      const cpu = m.cpu_usage ?? 0
+      const mem = m.memory_usage ?? 0
       const disk = metrics.value[serverId]?.disk ?? 0
       metrics.value[serverId] = { cpu, memory: mem, disk }
     })

@@ -184,17 +184,19 @@ function autoSelectServer() {
   }
 }
 
-// 监听已连接服务器变化
-watch(connectedServers, () => {
-  autoSelectServer()
-}, { immediate: true })
+// 监听已连接服务器变化，当有新服务器连接时自动选择
+watch(connectedServers, (newServers) => {
+  if (newServers.length > 0 && !selectedServer.value) {
+    autoSelectServer()
+  }
+}, { immediate: true, deep: true })
 
 // 监听 currentServerId 变化
 watch(() => serverStore.currentServerId, (newId) => {
   if (newId && connectedServers.value.find(s => s.id === newId)) {
     selectedServer.value = newId
   }
-})
+}, { immediate: true })
 
 const displayServers = computed(() => {
   if (selectedServer.value) {
@@ -285,12 +287,11 @@ function formatBytes(bytes: number): string {
   return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB'
 }
 
-onMounted(() => {
-  // 延迟一点确保服务器已连接
-  setTimeout(() => {
-    autoSelectServer()
-    initMetrics()
-  }, 100)
+onMounted(async () => {
+  // 等待一帧确保 store 已初始化
+  await new Promise(r => setTimeout(r, 0))
+  autoSelectServer()
+  initMetrics()
 })
 
 onUnmounted(() => {

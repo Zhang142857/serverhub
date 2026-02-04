@@ -144,7 +144,7 @@ func run() error {
 	grpcServer := grpc.NewServer(opts...)
 
 	// 注册服务
-	agentServer := server.NewAgentServer(version)
+	agentServer := server.NewAgentServer(version, token)
 	pb.RegisterAgentServiceServer(grpcServer, agentServer)
 
 	// 优雅关闭

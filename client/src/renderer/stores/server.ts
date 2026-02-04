@@ -195,6 +195,20 @@ export const useServerStore = defineStore('server', () => {
         }
       }
     }
+    // 自动选择第一个已连接的服务器
+    autoSelectServer()
+  }
+
+  // 自动选择服务器
+  function autoSelectServer() {
+    // 如果已经选择了服务器，不做任何操作
+    if (currentServerId.value && connectedServers.value.find(s => s.id === currentServerId.value)) {
+      return
+    }
+    // 选择第一个已连接的服务器
+    if (connectedServers.value.length > 0) {
+      currentServerId.value = connectedServers.value[0].id
+    }
   }
 
   // 初始化时加载
@@ -218,6 +232,7 @@ export const useServerStore = defineStore('server', () => {
     addGroup,
     removeGroup,
     loadFromStorage,
-    autoConnectAll
+    autoConnectAll,
+    autoSelectServer
   }
 })

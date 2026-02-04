@@ -64,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useServerStore } from '@/stores/server'
 import { ChatDotRound, Bell } from '@element-plus/icons-vue'
@@ -81,6 +81,13 @@ const selectedServerId = computed({
   get: () => serverStore.currentServerId,
   set: (val) => serverStore.setCurrentServer(val)
 })
+
+// 监听已连接服务器变化，自动选择
+watch(connectedServers, (servers) => {
+  if (servers.length > 0 && !serverStore.currentServerId) {
+    serverStore.autoSelectServer()
+  }
+}, { immediate: true })
 
 const emit = defineEmits(['toggle-ai'])
 
