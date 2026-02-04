@@ -5,25 +5,15 @@ on:
   push:
     tags:
       - 'client-v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            platform: win
-          - os: macos-latest
-            platform: mac
-          - os: ubuntu-latest
-            platform: linux
-
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,32 +30,48 @@ jobs:
         working-directory: client
         run: pnpm install
 
-      - name: Build application
+      - name: Build
         working-directory: client
-        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CI: true
         run: |
-          if [ "${{ matrix.platform }}" = "win" ]; then
-            npm run build:win
-          elif [ "${{ matrix.platform }}" = "mac" ]; then
-            npm run build:mac
-          else
-            npm run build:linux
-          fi
-          echo "=== Build complete ==="
-          ls -la release/ || echo "No release directory"
+          npm run build:win
+          dir release
 
-      - name: Upload artifacts (Windows)
-        if: matrix.platform == 'win'
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: client-windows
           path: client/release/*.exe
 
-      - name: Upload artifacts (macOS)
-        if: matrix.platform == 'mac'
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        run: npm install -g pnpm@8
+
+      - name: Install dependencies
+        working-directory: client
+        run: pnpm install
+
+      - name: Build
+        working-directory: client
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm run build:mac
+          ls -la release/
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: client-macos
@@ -73,8 +79,34 @@ jobs:
             client/release/*.dmg
             client/release/*.zip
 
-      - name: Upload artifacts (Linux)
-        if: matrix.platform == 'linux'
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        run: npm install -g pnpm@8
+
+      - name: Install dependencies
+        working-directory: client
+        run: pnpm install
+
+      - name: Build
+        working-directory: client
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm run build:linux
+          ls -la release/
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: client-linux
@@ -83,20 +115,17 @@ jobs:
             client/release/*.deb
 
   release:
-    name: Release
-    needs: build
+    name: Create Release
+    needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download all artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
-      - name: List artifacts
+      - name: List files
         run: ls -la dist/
 
       - name: Get version
@@ -113,30 +142,14 @@ jobs:
             AI-Native 服务器管理平台客户端
 
             ### 下载
-
-            | 平台 | 文件 | 说明 |
-            |------|------|------|
-            | Windows | ServerHub Setup *.exe | Windows 安装程序 |
-            | Windows | ServerHub *.exe | Windows 便携版 |
-            | macOS | ServerHub-*.dmg | macOS 安装包 |
-            | Linux | ServerHub-*.AppImage | Linux AppImage |
-            | Linux | serverhub-client_*.deb | Debian/Ubuntu 安装包 |
-
-            ### 系统要求
-
-            - Windows 10/11 (64-bit)
-            - macOS 10.15+ (Intel/Apple Silicon)
-            - Linux (Ubuntu 20.04+, Debian 11+)
+            - Windows: ServerHub Setup *.exe (安装程序) / ServerHub *.exe (便携版)
+            - macOS: ServerHub-*.dmg
+            - Linux: ServerHub-*.AppImage / serverhub-client_*.deb
 
             ### 首次使用
-
             1. 下载并安装客户端
-            2. 在服务器上安装 Agent:
-               ```bash
-               curl -fsSL https://cdn.jsdelivr.net/gh/${{ github.repository }}@main/scripts/install.sh | sudo bash
-               ```
+            2. 在服务器上安装 Agent: `curl -fsSL https://cdn.jsdelivr.net/gh/${{ github.repository }}@main/scripts/install.sh | sudo bash`
             3. 在客户端中添加服务器
-            4. 开始管理您的服务器！
 
           files: dist/*
           draft: false
