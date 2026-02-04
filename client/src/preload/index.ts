@@ -172,7 +172,19 @@ const electronAPI: ElectronAPI = {
     openFile: (options: OpenDialogOptions): Promise<OpenDialogResult> =>
       ipcRenderer.invoke('dialog:openFile', options),
     saveFile: (options: SaveDialogOptions): Promise<SaveDialogResult> =>
-      ipcRenderer.invoke('dialog:saveFile', options)
+      ipcRenderer.invoke('dialog:saveFile', options),
+    showOpenDialog: (options: { properties?: string[]; title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<{ canceled: boolean; filePaths: string[] }> =>
+      ipcRenderer.invoke('dialog:showOpenDialog', options)
+  },
+
+  // 本地文件系统
+  fs: {
+    scanDirectory: (path: string, options?: { ignore?: string[] }): Promise<{ name: string; path: string; size: number; isDir: boolean }[]> =>
+      ipcRenderer.invoke('fs:scanDirectory', path, options),
+    packDirectory: (path: string, options?: { ignore?: string[] }): Promise<Buffer> =>
+      ipcRenderer.invoke('fs:packDirectory', path, options),
+    readFile: (path: string): Promise<Buffer> =>
+      ipcRenderer.invoke('fs:readFile', path)
   },
 
   // Shell

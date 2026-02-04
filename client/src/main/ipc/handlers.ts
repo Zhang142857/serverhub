@@ -2,6 +2,12 @@ import { ipcMain, dialog, shell } from 'electron'
 import { GrpcClient } from '../grpc/client'
 import { AIGateway } from '../ai/gateway'
 import * as secureStorage from '../security/secureStorage'
+import * as fs from 'fs'
+import * as path from 'path'
+import * as zlib from 'zlib'
+import { promisify } from 'util'
+
+const gzip = promisify(zlib.gzip)
 
 // 存储所有服务器连接
 const serverConnections = new Map<string, GrpcClient>()
@@ -431,6 +437,127 @@ export function setupIpcHandlers() {
 
   ipcMain.handle('dialog:message', async (_, options: any) => {
     return await dialog.showMessageBox(options)
+  })
+
+  ipcMain.handle('dialog:showOpenDialog', async (_, options: any) => {
+    return await dialog.showOpenDialog(options)
+  })
+
+  // ==================== 本地文件系统 ====================
+  ipcMain.handle('fs:scanDirectory', async (_, dirPath: string, options?: { ignore?: string[] }) => {
+    const ignore = options?.ignore || ['node_modules', '.git', '__pycache__', '.venv', 'venv']
+    const files: { name: string; path: string; size: number; isDir: boolean }[] = []
+    
+    function scan(currentPath: string, relativePath: string = '') {
+      const entries = fs.readdirSync(currentPath, { withFileTypes: true })
+      for (const entry of entries) {
+        if (ignore.includes(entry.name)) continue
+        
+        const fullPath = path.join(currentPath, entry.name)
+        const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
+        
+        if (entry.isDirectory()) {
+          files.push({ name: entry.name, path: relPath, size: 0, isDir: true })
+          scan(fullPath, relPath)
+        } else {
+          const stats = fs.statSync(fullPath)
+          files.push({ name: entry.name, path: relPath, size: stats.size, isDir: false })
+        }
+      }
+    }
+    
+    scan(dirPath)
+    return files
+  })
+
+  ipcMain.handle('fs:packDirectory', async (_, dirPath: string, options?: { ignore?: string[] }) => {
+    const ignore = options?.ignore || ['node_modules', '.git', '__pycache__', '.venv', 'venv', '.next', '.nuxt', 'target', 'vendor', 'dist', 'build']
+    
+    // 使用 tar 格式打包（简化版，直接创建 tar 数据）
+    const tarChunks: Buffer[] = []
+    
+    function addFile(filePath: string, relativePath: string) {
+      const stats = fs.statSync(filePath)
+      const content = fs.readFileSync(filePath)
+      
+      // TAR header (512 bytes)
+      const header = Buffer.alloc(512)
+      
+      // 文件名 (100 bytes)
+      header.write(relativePath.slice(0, 99), 0, 100)
+      
+      // 文件模式 (8 bytes)
+      header.write('0000644 ', 100, 8)
+      
+      // UID (8 bytes)
+      header.write('0000000 ', 108, 8)
+      
+      // GID (8 bytes)
+      header.write('0000000 ', 116, 8)
+      
+      // 文件大小 (12 bytes, octal)
+      header.write(stats.size.toString(8).padStart(11, '0') + ' ', 124, 12)
+      
+      // 修改时间 (12 bytes, octal)
+      header.write(Math.floor(stats.mtime.getTime() / 1000).toString(8).padStart(11, '0') + ' ', 136, 12)
+      
+      // 校验和占位 (8 bytes)
+      header.write('        ', 148, 8)
+      
+      // 类型标志 (1 byte) - '0' 表示普通文件
+      header.write('0', 156, 1)
+      
+      // 计算校验和
+      let checksum = 0
+      for (let i = 0; i < 512; i++) {
+        checksum += header[i]
+      }
+      header.write(checksum.toString(8).padStart(6, '0') + '\0 ', 148, 8)
+      
+      tarChunks.push(header)
+      tarChunks.push(content)
+      
+      // 填充到 512 字节边界
+      const padding = 512 - (content.length % 512)
+      if (padding < 512) {
+        tarChunks.push(Buffer.alloc(padding))
+      }
+    }
+    
+    function scanAndAdd(currentPath: string, relativePath: string = '') {
+      const entries = fs.readdirSync(currentPath, { withFileTypes: true })
+      for (const entry of entries) {
+        if (ignore.includes(entry.name)) continue
+        
+        const fullPath = path.join(currentPath, entry.name)
+        const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
+        
+        if (entry.isDirectory()) {
+          scanAndAdd(fullPath, relPath)
+        } else {
+          try {
+            addFile(fullPath, relPath)
+          } catch (e) {
+            console.error(`Failed to add file ${fullPath}:`, e)
+          }
+        }
+      }
+    }
+    
+    scanAndAdd(dirPath)
+    
+    // 添加 tar 结束标记 (两个 512 字节的空块)
+    tarChunks.push(Buffer.alloc(1024))
+    
+    const tarData = Buffer.concat(tarChunks)
+    
+    // gzip 压缩
+    const gzipped = await gzip(tarData)
+    return gzipped
+  })
+
+  ipcMain.handle('fs:readFile', async (_, filePath: string) => {
+    return fs.readFileSync(filePath)
   })
 
   // ==================== 外部链接 ====================

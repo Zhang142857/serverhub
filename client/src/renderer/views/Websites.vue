@@ -237,7 +237,76 @@
             </el-form>
           </div>
 
-          <!-- 步骤2: 域名设置 -->
+          <!-- 步骤2: 上传代码 -->
+          <div v-show="deployStep === 'upload'" class="step-content">
+            <div class="step-header">
+              <h3>上传代码</h3>
+              <p>选择本地项目文件夹上传到服务器</p>
+            </div>
+
+            <div class="upload-section">
+              <!-- 选择文件夹 -->
+              <div class="upload-select" v-if="!selectedLocalPath">
+                <div class="upload-dropzone" @click="selectFolder">
+                  <el-icon class="upload-icon"><FolderOpened /></el-icon>
+                  <div class="upload-text">点击选择项目文件夹</div>
+                  <div class="upload-hint">选择包含项目代码的文件夹</div>
+                </div>
+              </div>
+
+              <!-- 已选择文件夹 -->
+              <div class="upload-selected" v-else>
+                <div class="selected-header">
+                  <div class="selected-info">
+                    <el-icon><Folder /></el-icon>
+                    <span class="selected-path">{{ selectedLocalPath }}</span>
+                  </div>
+                  <el-button text type="primary" @click="selectFolder">重新选择</el-button>
+                </div>
+
+                <!-- 文件列表预览 -->
+                <div class="file-preview">
+                  <div class="preview-header">
+                    <span>文件预览</span>
+                    <span class="file-count">{{ uploadFiles.length }} 个文件</span>
+                  </div>
+                  <div class="file-list">
+                    <div v-for="file in uploadFiles.slice(0, 10)" :key="file.path" class="file-item">
+                      <el-icon v-if="file.isDir"><Folder /></el-icon>
+                      <el-icon v-else><Document /></el-icon>
+                      <span class="file-name">{{ file.name }}</span>
+                      <span class="file-size" v-if="!file.isDir">{{ formatFileSize(file.size) }}</span>
+                    </div>
+                    <div v-if="uploadFiles.length > 10" class="file-more">
+                      ... 还有 {{ uploadFiles.length - 10 }} 个文件
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 上传目标 -->
+                <div class="upload-target">
+                  <el-icon><Right /></el-icon>
+                  <span>上传到服务器:</span>
+                  <code>{{ newProject.path || '/var/www/' + newProject.name }}</code>
+                </div>
+
+                <!-- 上传进度 -->
+                <div class="upload-progress" v-if="uploading">
+                  <el-progress :percentage="uploadProgress" :stroke-width="8" />
+                  <div class="progress-log">{{ uploadLog }}</div>
+                </div>
+              </div>
+
+              <!-- 跳过上传选项 -->
+              <div class="upload-skip">
+                <el-checkbox v-model="newProject.skipUpload">
+                  跳过上传（代码已在服务器上或稍后手动上传）
+                </el-checkbox>
+              </div>
+            </div>
+          </div>
+
+          <!-- 步骤3: 域名设置 -->
           <div v-show="deployStep === 'domain'" class="step-content">
             <div class="step-header">
               <h3>域名设置</h3>
@@ -335,7 +404,7 @@
             </el-form>
           </div>
 
-          <!-- 步骤3: 部署设置 -->
+          <!-- 步骤4: 部署设置 -->
           <div v-show="deployStep === 'deploy'" class="step-content">
             <div class="step-header">
               <h3>部署设置</h3>
@@ -386,7 +455,7 @@
             </el-form>
           </div>
 
-          <!-- 步骤4: SSL 设置 -->
+          <!-- 步骤5: SSL 设置 -->
           <div v-show="deployStep === 'ssl'" class="step-content">
             <div class="step-header">
               <h3>SSL 证书</h3>
@@ -531,7 +600,7 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useServerStore } from '@/stores/server'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, Lock, Delete, ArrowDown, Check, Promotion, Monitor, CopyDocument, InfoFilled, Unlock, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
+import { Plus, Refresh, Lock, Delete, ArrowDown, Check, Promotion, Monitor, CopyDocument, InfoFilled, Unlock, ArrowLeft, ArrowRight, FolderOpened, Folder, Document, Right } from '@element-plus/icons-vue'
 import TechIcon from '@/components/icons/TechIcons.vue'
 
 interface Site {
@@ -599,22 +668,30 @@ const newSite = ref({ name: '', domain: '', path: '/var/www', ssl: false })
 const newProxy = ref({ name: '', domain: '', upstream: 'http://127.0.0.1:3000', websocket: false, ssl: false })
 const newProject = ref<{
   name: string; type: string; domain: string; domainType: string; path: string; port: number; ssl: boolean;
-  buildSteps: BuildStep[]; startCommand: string; outputDir: string; envVars: EnvVar[]
+  buildSteps: BuildStep[]; startCommand: string; outputDir: string; envVars: EnvVar[]; skipUpload: boolean
 }>({
   name: '', type: 'nodejs', domain: '', domainType: 'domain', path: '/var/www', port: 3000, ssl: false,
   buildSteps: [{ command: 'npm install' }, { command: 'npm run build' }],
-  startCommand: 'npm start', outputDir: 'dist', envVars: []
+  startCommand: 'npm start', outputDir: 'dist', envVars: [], skipUpload: false
 })
 
 // 部署步骤导航
 const deployStep = ref('basic')
 const deploySteps = [
   { key: 'basic', title: '基本信息', desc: '项目名称和类型' },
+  { key: 'upload', title: '上传代码', desc: '上传项目文件' },
   { key: 'domain', title: '域名设置', desc: '配置访问地址' },
   { key: 'deploy', title: '部署设置', desc: '构建和启动流程' },
   { key: 'ssl', title: 'SSL 证书', desc: 'HTTPS 加密' }
 ]
 const deployStepIndex = computed(() => deploySteps.findIndex(s => s.key === deployStep.value))
+
+// 上传相关
+const uploadFiles = ref<{ name: string; path: string; size: number; isDir: boolean }[]>([])
+const uploadProgress = ref(0)
+const uploading = ref(false)
+const uploadLog = ref('')
+const selectedLocalPath = ref('')
 
 // 服务器 IP
 const serverPublicIP = ref('')
@@ -686,9 +763,13 @@ function resetNewProject() {
   newProject.value = {
     name: '', type: 'nodejs', domain: '', domainType: 'domain', path: '/var/www', port: 3000, ssl: false,
     buildSteps: [{ command: 'npm install' }, { command: 'npm run build' }],
-    startCommand: 'npm start', outputDir: 'dist', envVars: []
+    startCommand: 'npm start', outputDir: 'dist', envVars: [], skipUpload: false
   }
   deployStep.value = 'basic'
+  uploadFiles.value = []
+  selectedLocalPath.value = ''
+  uploadProgress.value = 0
+  uploadLog.value = ''
   fetchServerIP()
 }
 
@@ -736,6 +817,16 @@ function nextDeployStep() {
       ElMessage.warning('请输入项目名称')
       return
     }
+    // 自动设置项目目录
+    if (!newProject.value.path || newProject.value.path === '/var/www') {
+      newProject.value.path = '/var/www/' + newProject.value.name
+    }
+  } else if (deployStep.value === 'upload') {
+    // 上传步骤验证 - 如果没有跳过且没有选择文件夹，提示
+    if (!newProject.value.skipUpload && !selectedLocalPath.value) {
+      ElMessage.warning('请选择要上传的项目文件夹，或勾选跳过上传')
+      return
+    }
   } else if (deployStep.value === 'domain') {
     if (newProject.value.domainType === 'domain' && !newProject.value.domain) {
       ElMessage.warning('请输入域名')
@@ -749,6 +840,107 @@ function nextDeployStep() {
   
   const idx = deployStepIndex.value
   if (idx < deploySteps.length - 1) deployStep.value = deploySteps[idx + 1].key
+}
+
+// 选择本地文件夹
+async function selectFolder() {
+  try {
+    const result = await window.electronAPI.dialog.showOpenDialog({
+      properties: ['openDirectory'],
+      title: '选择项目文件夹'
+    })
+    
+    if (result.canceled || !result.filePaths.length) return
+    
+    selectedLocalPath.value = result.filePaths[0]
+    
+    // 扫描文件夹内容
+    await scanFolder(selectedLocalPath.value)
+  } catch (e) {
+    ElMessage.error('选择文件夹失败: ' + (e as Error).message)
+  }
+}
+
+// 扫描文件夹
+async function scanFolder(folderPath: string) {
+  try {
+    const files = await window.electronAPI.fs.scanDirectory(folderPath, {
+      ignore: ['node_modules', '.git', '__pycache__', '.venv', 'venv', 'dist', 'build', '.next', '.nuxt', 'target', 'vendor']
+    })
+    uploadFiles.value = files
+  } catch (e) {
+    // 如果 scanDirectory 不存在，使用备用方法
+    uploadFiles.value = [{ name: folderPath.split(/[/\\]/).pop() || 'project', path: folderPath, size: 0, isDir: true }]
+  }
+}
+
+// 上传文件夹到服务器
+async function uploadFolderToServer() {
+  if (!selectedServer.value || !selectedLocalPath.value) return
+  
+  uploading.value = true
+  uploadProgress.value = 0
+  uploadLog.value = '准备上传...'
+  
+  try {
+    const targetPath = newProject.value.path || '/var/www/' + newProject.value.name
+    
+    // 创建目标目录
+    uploadLog.value = '创建目标目录...'
+    await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', `sudo mkdir -p ${targetPath}`])
+    
+    // 使用 tar 打包并通过 base64 传输
+    uploadLog.value = '打包文件...'
+    uploadProgress.value = 10
+    
+    // 读取并打包文件夹
+    const tarData = await window.electronAPI.fs.packDirectory(selectedLocalPath.value, {
+      ignore: ['node_modules', '.git', '__pycache__', '.venv', 'venv', '.next', '.nuxt', 'target', 'vendor']
+    })
+    
+    uploadLog.value = '上传中...'
+    uploadProgress.value = 30
+    
+    // 分块上传
+    const base64 = tarData.toString('base64')
+    const chunkSize = 500 * 1024 // 500KB
+    const chunks = Math.ceil(base64.length / chunkSize)
+    
+    // 清空临时文件
+    await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 'rm -f /tmp/upload.tar.gz.b64'])
+    
+    for (let i = 0; i < chunks; i++) {
+      const chunk = base64.slice(i * chunkSize, (i + 1) * chunkSize)
+      await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', `printf '%s' "${chunk}" >> /tmp/upload.tar.gz.b64`])
+      uploadProgress.value = 30 + Math.floor((i / chunks) * 50)
+      uploadLog.value = `上传中... ${i + 1}/${chunks}`
+    }
+    
+    uploadLog.value = '解压文件...'
+    uploadProgress.value = 85
+    
+    // 解码并解压
+    await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 
+      `base64 -d /tmp/upload.tar.gz.b64 > /tmp/upload.tar.gz && tar -xzf /tmp/upload.tar.gz -C ${targetPath} && rm -f /tmp/upload.tar.gz /tmp/upload.tar.gz.b64`
+    ])
+    
+    uploadProgress.value = 100
+    uploadLog.value = '上传完成!'
+    
+    ElMessage.success('文件上传成功')
+  } catch (e) {
+    uploadLog.value = '上传失败: ' + (e as Error).message
+    ElMessage.error('上传失败: ' + (e as Error).message)
+  } finally {
+    uploading.value = false
+  }
+}
+
+// 格式化文件大小
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB'
 }
 
 function onProjectTypeChange(type: string) {
@@ -1725,6 +1917,147 @@ function formatTime(ts: number): string {
   .footer-right {
     display: flex;
     gap: 8px;
+  }
+}
+
+// 上传步骤样式
+.upload-section {
+  .upload-dropzone {
+    border: 2px dashed var(--border-color);
+    border-radius: 12px;
+    padding: 60px 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+      border-color: var(--primary-color);
+      background: rgba(99, 102, 241, 0.05);
+    }
+
+    .upload-icon {
+      font-size: 48px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+
+    .upload-text {
+      font-size: 16px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .upload-hint {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+  }
+
+  .upload-selected {
+    .selected-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      margin-bottom: 16px;
+
+      .selected-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        .selected-path {
+          font-family: 'Consolas', monospace;
+          font-size: 13px;
+        }
+      }
+    }
+
+    .file-preview {
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      margin-bottom: 16px;
+
+      .preview-header {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+
+        .file-count {
+          color: var(--text-secondary);
+        }
+      }
+
+      .file-list {
+        padding: 8px 16px;
+        max-height: 200px;
+        overflow-y: auto;
+
+        .file-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 0;
+          font-size: 13px;
+
+          .el-icon {
+            color: var(--text-secondary);
+          }
+
+          .file-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .file-size {
+            color: var(--text-secondary);
+            font-size: 12px;
+          }
+        }
+
+        .file-more {
+          padding: 8px 0;
+          color: var(--text-secondary);
+          font-size: 12px;
+        }
+      }
+    }
+
+    .upload-target {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      background: rgba(99, 102, 241, 0.1);
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 16px;
+
+      code {
+        font-family: 'Consolas', monospace;
+        color: var(--primary-color);
+      }
+    }
+
+    .upload-progress {
+      .progress-log {
+        margin-top: 8px;
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+    }
+  }
+
+  .upload-skip {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-color);
   }
 }
 </style>

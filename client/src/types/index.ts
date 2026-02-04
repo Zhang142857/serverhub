@@ -409,6 +409,12 @@ export interface ElectronAPI {
   dialog: {
     openFile: (options: OpenDialogOptions) => Promise<OpenDialogResult>
     saveFile: (options: SaveDialogOptions) => Promise<SaveDialogResult>
+    showOpenDialog: (options: { properties?: string[]; title?: string; filters?: FileFilter[] }) => Promise<{ canceled: boolean; filePaths: string[] }>
+  }
+  fs: {
+    scanDirectory: (path: string, options?: { ignore?: string[] }) => Promise<{ name: string; path: string; size: number; isDir: boolean }[]>
+    packDirectory: (path: string, options?: { ignore?: string[] }) => Promise<Buffer>
+    readFile: (path: string) => Promise<Buffer>
   }
   shell: {
     openExternal: (url: string) => Promise<void>
