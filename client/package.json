@@ -83,7 +83,5 @@
       "allowToChangeInstallationDirectory": false
     }
   },
-  "optionalDependencies": {
-    "@rollup/rollup-win32-x64-msvc": "^4.57.1"
-  }
+  "optionalDependencies": {}
 }

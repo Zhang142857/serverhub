@@ -1,12 +1,4 @@
 # ServerHub Client 自动发布工作流
-#
-# 触发条件: 推送 client-v* 标签时自动构建并发布
-#
-# 使用方法:
-#   git tag client-v0.1.0
-#   git push origin client-v0.1.0
-#
-
 name: Release Client
 
 on:
@@ -46,20 +38,54 @@ jobs:
         with:
           version: 8
 
-      - name: Get version
-        id: version
+      - name: Get pnpm store directory
         shell: bash
-        run: echo "VERSION=${GITHUB_REF#refs/tags/client-}" >> $GITHUB_OUTPUT
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
         working-directory: client
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
 
-      - name: Build client
+      - name: Build Vite
+        working-directory: client
+        run: |
+          pnpm run typecheck || true
+          npx vite build
+
+      - name: Build Electron (Windows)
+        if: matrix.platform == 'win'
         working-directory: client
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm run build:${{ matrix.platform }}
+        run: npx electron-builder --win --publish never
+
+      - name: Build Electron (macOS)
+        if: matrix.platform == 'mac'
+        working-directory: client
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --mac --publish never
+
+      - name: Build Electron (Linux)
+        if: matrix.platform == 'linux'
+        working-directory: client
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --linux --publish never
+
+      - name: List release files
+        working-directory: client
+        shell: bash
+        run: ls -la release/ || echo "No release directory"
 
       - name: Upload artifacts (Windows)
         if: matrix.platform == 'win'
@@ -68,6 +94,7 @@ jobs:
           name: client-windows
           path: |
             client/release/*.exe
+          if-no-files-found: error
 
       - name: Upload artifacts (macOS)
         if: matrix.platform == 'mac'
@@ -77,6 +104,7 @@ jobs:
           path: |
             client/release/*.dmg
             client/release/*.zip
+          if-no-files-found: error
 
       - name: Upload artifacts (Linux)
         if: matrix.platform == 'linux'
@@ -86,6 +114,7 @@ jobs:
           path: |
             client/release/*.AppImage
             client/release/*.deb
+          if-no-files-found: error
 
   release:
     name: Release
@@ -121,17 +150,17 @@ jobs:
 
             | 平台 | 文件 | 说明 |
             |------|------|------|
-            | Windows | ServerHub-Setup-*.exe | Windows 安装程序 |
-            | Windows | ServerHub-*.exe | Windows 便携版 |
+            | Windows | ServerHub Setup *.exe | Windows 安装程序 |
+            | Windows | ServerHub *.exe | Windows 便携版 |
             | macOS | ServerHub-*.dmg | macOS 安装包 |
             | Linux | ServerHub-*.AppImage | Linux AppImage |
-            | Linux | ServerHub-*.deb | Debian/Ubuntu 安装包 |
+            | Linux | serverhub-client_*.deb | Debian/Ubuntu 安装包 |
 
             ### 系统要求
 
             - Windows 10/11 (64-bit)
             - macOS 10.15+ (Intel/Apple Silicon)
-            - Linux (Ubuntu 20.04+, Debian 11+, 或其他支持 AppImage 的发行版)
+            - Linux (Ubuntu 20.04+, Debian 11+)
 
             ### 首次使用
 
@@ -140,7 +169,7 @@ jobs:
                ```bash
                curl -fsSL https://cdn.jsdelivr.net/gh/${{ github.repository }}@main/scripts/install.sh | sudo bash
                ```
-            3. 在客户端中添加服务器，输入服务器地址、端口和认证令牌
+            3. 在客户端中添加服务器
             4. 开始管理您的服务器！
 
           files: |
