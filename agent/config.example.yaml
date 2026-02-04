@@ -3,8 +3,10 @@
 server:
   # 监听地址
   host: "0.0.0.0"
-  # 监听端口
+  # gRPC 端口
   port: 9527
+  # REST API 端口
+  api_port: 9528
   # TLS 配置
   tls:
     enabled: false

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	pb "github.com/serverhub/agent/api/proto"
+	"github.com/serverhub/agent/internal/api"
 	"github.com/serverhub/agent/internal/auth"
 	"github.com/serverhub/agent/internal/server"
 	"github.com/spf13/viper"
@@ -76,6 +78,7 @@ func loadConfig(configFile string) error {
 	// 默认配置
 	viper.SetDefault("server.host", "0.0.0.0")
 	viper.SetDefault("server.port", 9527)
+	viper.SetDefault("server.api_port", 9528)
 	viper.SetDefault("server.tls.enabled", false)
 	viper.SetDefault("auth.token", "")
 	viper.SetDefault("metrics.interval", 2)
@@ -105,9 +108,12 @@ func loadConfig(configFile string) error {
 func run() error {
 	host := viper.GetString("server.host")
 	port := viper.GetInt("server.port")
+	apiPort := viper.GetInt("server.api_port")
 	addr := fmt.Sprintf("%s:%d", host, port)
+	apiAddr := fmt.Sprintf("%s:%d", host, apiPort)
+	token := viper.GetString("auth.token")
 
-	// 创建监听器
+	// 创建 gRPC 监听器
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("监听端口失败: %w", err)
@@ -130,7 +136,6 @@ func run() error {
 	}
 
 	// 添加认证拦截器
-	token := viper.GetString("auth.token")
 	if token == "" {
 		log.Warn().Msg("未设置认证令牌，建议使用 --gen-token 生成")
 	}
@@ -147,6 +152,15 @@ func run() error {
 	agentServer := server.NewAgentServer(version, token)
 	pb.RegisterAgentServiceServer(grpcServer, agentServer)
 
+	// 创建 REST API 服务器
+	apiServer := api.NewServer(token, version)
+	mux := http.NewServeMux()
+	apiServer.RegisterRoutes(mux)
+	httpServer := &http.Server{
+		Addr:    apiAddr,
+		Handler: mux,
+	}
+
 	// 优雅关闭
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -157,15 +171,24 @@ func run() error {
 		<-sigCh
 		log.Info().Msg("收到关闭信号，正在停止服务...")
 		grpcServer.GracefulStop()
+		httpServer.Shutdown(ctx)
 		cancel()
 	}()
 
 	log.Info().
 		Str("version", version).
-		Str("address", addr).
+		Str("grpc", addr).
+		Str("api", apiAddr).
 		Msg("ServerHub Agent 已启动")
 
-	// 启动服务
+	// 启动 REST API 服务器
+	go func() {
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Error().Err(err).Msg("REST API 服务错误")
+		}
+	}()
+
+	// 启动 gRPC 服务
 	if err := grpcServer.Serve(listener); err != nil {
 		return fmt.Errorf("gRPC服务错误: %w", err)
 	}
