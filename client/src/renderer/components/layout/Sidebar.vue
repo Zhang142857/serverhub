@@ -69,6 +69,14 @@
           <el-icon><Files /></el-icon>
           <span>Compose</span>
         </el-menu-item>
+        <el-menu-item index="/websites">
+          <el-icon><Monitor /></el-icon>
+          <span>网站管理</span>
+        </el-menu-item>
+        <el-menu-item index="/environment">
+          <el-icon><Box /></el-icon>
+          <span>环境管理</span>
+        </el-menu-item>
 
         <el-divider />
 

@@ -10,8 +10,8 @@
   --warning-color: #f59e0b;
   --danger-color: #ef4444;
   --border-color: #2e2e4a;
-  --sidebar-width: 240px;
-  --header-height: 56px;
+  --sidebar-width: 200px;
+  --header-height: 48px;
 }
 
 * {
@@ -25,7 +25,7 @@ html, body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background-color: var(--bg-color);
   color: var(--text-color);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -64,6 +64,152 @@ html, body {
 .el-dialog {
   --el-dialog-bg-color: var(--bg-secondary);
   --el-dialog-border-radius: 12px;
+  --el-dialog-title-font-size: 16px;
+}
+
+.el-dialog__header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  padding: 14px 16px !important;
+}
+
+.el-dialog__title {
+  color: var(--text-color) !important;
+}
+
+.el-dialog__headerbtn .el-dialog__close {
+  color: var(--text-secondary);
+  &:hover {
+    color: var(--text-color);
+  }
+}
+
+.el-dialog__body {
+  background: var(--bg-secondary);
+  color: var(--text-color);
+  padding: 16px !important;
+}
+
+.el-dialog__footer {
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+  padding: 12px 16px !important;
+}
+
+.el-overlay {
+  background-color: rgba(0, 0, 0, 0.6) !important;
+}
+
+.el-message-box {
+  --el-messagebox-title-color: var(--text-color);
+  --el-messagebox-content-color: var(--text-color);
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.el-message-box__header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.el-message-box__content {
+  background: var(--bg-secondary);
+  color: var(--text-color);
+}
+
+.el-message-box__btns {
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+}
+
+.el-descriptions {
+  --el-descriptions-item-bordered-label-background: var(--bg-tertiary);
+}
+
+.el-descriptions__label {
+  color: var(--text-secondary) !important;
+  background: var(--bg-tertiary) !important;
+}
+
+.el-descriptions__content {
+  color: var(--text-color) !important;
+  background: var(--bg-secondary) !important;
+}
+
+.el-descriptions__cell {
+  border-color: var(--border-color) !important;
+}
+
+.el-alert {
+  --el-alert-bg-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+}
+
+.el-alert__title {
+  color: var(--text-color);
+}
+
+.el-alert__description {
+  color: var(--text-secondary);
+}
+
+.el-empty__description {
+  color: var(--text-secondary);
+}
+
+.el-dropdown-menu {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.el-dropdown-menu__item {
+  color: var(--text-color) !important;
+  &:hover {
+    background: var(--bg-tertiary) !important;
+  }
+}
+
+.el-popper {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.el-popper__arrow::before {
+  background: var(--bg-secondary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.el-select-dropdown {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.el-select-dropdown__item {
+  color: var(--text-color) !important;
+  &:hover {
+    background: var(--bg-tertiary) !important;
+  }
+  &.selected {
+    color: var(--primary-color) !important;
+  }
+}
+
+.el-tabs__item {
+  color: var(--text-secondary) !important;
+  &.is-active {
+    color: var(--primary-color) !important;
+  }
+  &:hover {
+    color: var(--text-color) !important;
+  }
+}
+
+.el-tabs__active-bar {
+  background-color: var(--primary-color) !important;
+}
+
+.el-tabs__nav-wrap::after {
+  background-color: var(--border-color) !important;
 }
 
 .el-input {
@@ -97,6 +243,65 @@ html, body {
 
 .el-tag {
   border-radius: 6px;
+}
+
+// 全局缩小按钮和表单元素
+.el-button {
+  --el-button-size: 28px;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 6px;
+}
+
+.el-button--small {
+  --el-button-size: 24px;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.el-input {
+  --el-input-height: 30px;
+  font-size: 13px;
+}
+
+.el-select {
+  --el-select-height: 30px;
+}
+
+.el-form-item {
+  margin-bottom: 14px;
+}
+
+.el-form-item__label {
+  font-size: 12px;
+}
+
+.el-dialog__header {
+  padding: 14px 16px;
+}
+
+.el-dialog__body {
+  padding: 16px;
+}
+
+.el-dialog__footer {
+  padding: 12px 16px;
+}
+
+.el-menu-item {
+  height: 40px;
+  line-height: 40px;
+  font-size: 13px;
+}
+
+.el-table {
+  font-size: 12px;
+}
+
+.el-table th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 // 通用工具类

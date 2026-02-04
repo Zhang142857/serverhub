@@ -75,6 +75,18 @@ const routes: RouteRecordRaw[] = [
     meta: { title: 'Nginx', icon: 'Connection' }
   },
   {
+    path: '/websites',
+    name: 'Websites',
+    component: () => import('../views/Websites.vue'),
+    meta: { title: '网站管理', icon: 'Globe' }
+  },
+  {
+    path: '/environment',
+    name: 'Environment',
+    component: () => import('../views/Environment.vue'),
+    meta: { title: '环境管理', icon: 'Box' }
+  },
+  {
     path: '/database',
     name: 'Database',
     component: () => import('../views/Database.vue'),

@@ -436,6 +436,7 @@ const adding = ref(false)
 const newServer = ref({ name: '', host: '', port: 9527, token: '', group: '默认', useTls: false })
 
 const serverMetrics = ref<Record<string, ServerMetric>>({})
+const serverDiskInfo = ref<Record<string, any[]>>({})
 const metricsHistory = ref<MetricHistory[]>([])
 const loadHistory = ref<Record<string, number[]>>({})
 const totalContainers = ref(0)
@@ -447,18 +448,9 @@ const topConsumersType = ref<'cpu' | 'memory' | 'disk'>('cpu')
 const metricsCleanupFns = ref<Record<string, () => void>>({})
 let metricsInterval: ReturnType<typeof setInterval> | null = null
 
-const alerts = ref<Alert[]>([
-  { id: '1', level: 'warning', message: 'web-server-01 CPU 使用率超过 80%', server: 'web-server-01', time: new Date(Date.now() - 300000) },
-  { id: '2', level: 'info', message: 'db-server 磁盘空间使用率达到 70%', server: 'db-server', time: new Date(Date.now() - 600000) }
-])
+const alerts = ref<Alert[]>([])
 
-const recentActivities = ref<Activity[]>([
-  { id: '1', type: 'connect', message: '连接到 web-server-01', time: new Date(Date.now() - 60000) },
-  { id: '2', type: 'container', message: '启动容器 nginx-proxy', time: new Date(Date.now() - 180000) },
-  { id: '3', type: 'command', message: '执行命令 systemctl restart nginx', time: new Date(Date.now() - 300000) },
-  { id: '4', type: 'file', message: '编辑文件 /etc/nginx/nginx.conf', time: new Date(Date.now() - 420000) },
-  { id: '5', type: 'connect', message: '断开 db-server 连接', time: new Date(Date.now() - 600000) }
-])
+const recentActivities = ref<Activity[]>([])
 
 const servers = computed(() => serverStore.servers)
 const groups = computed(() => serverStore.groups)
@@ -530,11 +522,11 @@ const connectedServersWithMetrics = computed(() => {
   }))
 })
 
-// 资源消耗排行
+// 资源消耗排行 - 只显示真实服务器数据
 const topConsumers = computed(() => {
   const consumers: Array<{ name: string; type: string; value: number }> = []
 
-  // 添加服务器资源消耗
+  // 只添加真实服务器资源消耗
   serverStore.connectedServers.forEach(server => {
     const metrics = serverMetrics.value[server.id]
     if (metrics) {
@@ -547,50 +539,26 @@ const topConsumers = computed(() => {
     }
   })
 
-  // 添加模拟的容器资源消耗
-  const containerData = [
-    { name: 'mysql-db', type: '容器', cpu: 28, memory: 45, disk: 12 },
-    { name: 'nginx-proxy', type: '容器', cpu: 15, memory: 22, disk: 5 },
-    { name: 'redis-cache', type: '容器', cpu: 8, memory: 18, disk: 3 },
-    { name: 'app-backend', type: '容器', cpu: 35, memory: 38, disk: 8 },
-    { name: 'postgres-db', type: '容器', cpu: 22, memory: 52, disk: 25 }
-  ]
-
-  containerData.forEach(c => {
-    consumers.push({
-      name: c.name,
-      type: c.type,
-      value: topConsumersType.value === 'cpu' ? c.cpu :
-             topConsumersType.value === 'memory' ? c.memory : c.disk
-    })
-  })
-
-  // 按值排序并返回前5个
+  // 按值排序
   return consumers.sort((a, b) => b.value - a.value).slice(0, 5)
 })
 
-// 磁盘使用列表
+// 磁盘使用列表 - 使用真实数据
 const diskUsageList = computed(() => {
   const disks: Array<{ name: string; server: string; usage: number; used: string; total: string }> = []
 
   serverStore.connectedServers.forEach(server => {
-    const metrics = serverMetrics.value[server.id]
-    if (metrics) {
-      // 模拟磁盘数据
-      const diskData = [
-        { name: '/', usage: metrics.disk, total: '100GB' },
-        { name: '/home', usage: Math.max(10, metrics.disk - 15), total: '500GB' },
-        { name: '/var', usage: Math.min(90, metrics.disk + 20), total: '200GB' }
-      ]
-
-      diskData.forEach(d => {
-        const usedGB = (parseFloat(d.total) * d.usage / 100).toFixed(0)
+    const diskInfo = serverDiskInfo.value[server.id]
+    if (diskInfo && diskInfo.length > 0) {
+      diskInfo.forEach((d: any) => {
+        const totalGB = (d.total / 1024 / 1024 / 1024).toFixed(0)
+        const usedGB = (d.used / 1024 / 1024 / 1024).toFixed(0)
         disks.push({
-          name: d.name,
+          name: d.mountpoint || d.device,
           server: server.name,
-          usage: d.usage,
+          usage: d.used_percent || d.usedPercent || 0,
           used: `${usedGB}GB`,
-          total: d.total
+          total: `${totalGB}GB`
         })
       })
     }
@@ -602,8 +570,44 @@ const diskUsageList = computed(() => {
 // 初始化服务器指标 - 启动真实的指标流
 async function initServerMetrics() {
   const connectedServers = serverStore.connectedServers
-  for (const server of connectedServers) {
-    await startMetricsStream(server.id)
+  // 并行启动所有服务器的指标流
+  await Promise.all(connectedServers.map(server => startMetricsStream(server.id)))
+}
+
+// 获取服务器系统信息（包括磁盘）- 同时获取初始指标
+async function loadServerSystemInfo(serverId: string) {
+  try {
+    const sysInfo = await window.electronAPI.server.getSystemInfo(serverId)
+    if (sysInfo) {
+      // 立即设置初始指标值（不等待流）
+      const cpuUsage = sysInfo.cpu?.usage ?? sysInfo.cpu?.usedPercent ?? 0
+      const memoryUsage = sysInfo.memory?.usedPercent ?? sysInfo.memory?.used_percent ?? 0
+      
+      // 处理磁盘信息
+      if (sysInfo.disks && sysInfo.disks.length > 0) {
+        serverDiskInfo.value[serverId] = sysInfo.disks
+        const avgDisk = sysInfo.disks.reduce((sum: number, d: any) => 
+          sum + (d.used_percent || d.usedPercent || 0), 0) / sysInfo.disks.length
+        
+        // 立即设置初始指标
+        serverMetrics.value[serverId] = {
+          cpu: cpuUsage,
+          memory: memoryUsage,
+          disk: avgDisk,
+          networkIn: 0,
+          networkOut: 0,
+          uptime: sysInfo.uptime || 0
+        }
+        
+        // 初始化负载历史
+        loadHistory.value[serverId] = Array(20).fill(cpuUsage)
+        
+        // 立即更新图表历史
+        updateMetricsHistory()
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load system info:', e)
   }
 }
 
@@ -616,29 +620,32 @@ async function startMetricsStream(serverId: string) {
   }
 
   try {
-    // 启动指标流（每2秒更新一次）
-    await window.electronAPI.server.startMetrics(serverId, 2)
+    // 先获取系统信息（包括磁盘）- 这会立即设置初始指标
+    await loadServerSystemInfo(serverId)
+    
+    // 启动指标流（每1秒更新一次，加快响应）
+    await window.electronAPI.server.startMetrics(serverId, 1)
 
     // 监听指标更新
     const cleanup = window.electronAPI.server.onMetrics(serverId, (metrics) => {
-      // 更新服务器指标
-      const cpuUsage = metrics.cpu_usage || 0
-      const memoryUsage = metrics.memory_usage || 0
+      
+      // 更新服务器指标 - 同时支持 snake_case 和 camelCase
+      const cpuUsage = metrics.cpu_usage ?? metrics.cpuUsage ?? 0
+      const memoryUsage = metrics.memory_usage ?? metrics.memoryUsage ?? 0
 
-      // 计算磁盘使用率（从磁盘指标中获取）
-      let diskUsage = 0
-      if (metrics.disk_metrics && metrics.disk_metrics.length > 0) {
-        // 这里简化处理，实际应该从系统信息中获取磁盘使用率
-        diskUsage = serverMetrics.value[serverId]?.disk || 30
-      }
+      // 磁盘使用率从系统信息中获取
+      const diskUsage = serverMetrics.value[serverId]?.disk || 0
 
       // 计算网络流量
       let networkIn = 0
       let networkOut = 0
-      if (metrics.network_metrics) {
-        metrics.network_metrics.forEach((net: any) => {
-          networkIn += (net.bytes_recv || 0) / 1024 / 1024 // 转换为 MB/s
-          networkOut += (net.bytes_sent || 0) / 1024 / 1024
+      const networkMetrics = metrics.network_metrics ?? metrics.networkMetrics
+      if (networkMetrics) {
+        networkMetrics.forEach((net: any) => {
+          const bytesRecv = net.bytes_recv ?? net.bytesRecv ?? 0
+          const bytesSent = net.bytes_sent ?? net.bytesSent ?? 0
+          networkIn += bytesRecv / 1024 / 1024 // 转换为 MB/s
+          networkOut += bytesSent / 1024 / 1024
         })
       }
 
@@ -674,23 +681,6 @@ async function startMetricsStream(serverId: string) {
     metricsCleanupFns.value[serverId] = cleanup
   } catch (error) {
     console.error(`Failed to start metrics for server ${serverId}:`, error)
-    // 如果真实指标流失败，使用模拟数据作为后备
-    initFallbackMetrics(serverId)
-  }
-}
-
-// 后备：使用模拟数据（当真实指标不可用时）
-function initFallbackMetrics(serverId: string) {
-  const server = serverStore.servers.find(s => s.id === serverId)
-  if (!server) return
-
-  serverMetrics.value[serverId] = {
-    cpu: Math.random() * 50 + 20,
-    memory: Math.random() * 40 + 30,
-    disk: Math.random() * 30 + 20,
-    networkIn: Math.random() * 50 + 10,
-    networkOut: Math.random() * 30 + 5,
-    uptime: Math.floor(Math.random() * 30 * 24 * 3600) + 86400
   }
 }
 
@@ -721,6 +711,7 @@ function stopMetricsStream(serverId: string) {
     delete metricsCleanupFns.value[serverId]
   }
   delete serverMetrics.value[serverId]
+  delete serverDiskInfo.value[serverId]
   delete loadHistory.value[serverId]
 }
 
@@ -939,22 +930,22 @@ async function loadContainerAndServiceStats() {
 .dashboard { max-width: 1400px; margin: 0 auto; }
 
 .dashboard-header {
-  display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;
-  h1 { font-size: 28px; font-weight: 600; margin-bottom: 4px; }
-  .subtitle { color: var(--text-secondary); }
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 2px; }
+  .subtitle { color: var(--text-secondary); font-size: 12px; }
 }
 
 .stats-grid {
-  display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 24px;
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px;
 }
 
 .stat-card {
-  background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px;
-  padding: 20px; display: flex; align-items: center; gap: 16px; cursor: pointer; transition: all 0.2s;
+  background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px;
+  padding: 14px; display: flex; align-items: center; gap: 12px; cursor: pointer; transition: all 0.2s;
   &:hover { border-color: var(--primary-color); }
   &.has-alerts { border-color: var(--el-color-danger); }
   .stat-icon {
-    width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
     &.servers { background-color: rgba(99, 102, 241, 0.1); color: #6366f1; }
     &.connected { background-color: rgba(34, 197, 94, 0.1); color: #22c55e; }
     &.containers { background-color: rgba(59, 130, 246, 0.1); color: #3b82f6; }
@@ -962,68 +953,68 @@ async function loadContainerAndServiceStats() {
     &.alerts { background-color: rgba(239, 68, 68, 0.1); color: #ef4444; }
   }
   .stat-info {
-    .stat-value { font-size: 28px; font-weight: 600; }
-    .stat-label { font-size: 13px; color: var(--text-secondary); }
+    .stat-value { font-size: 20px; font-weight: 600; }
+    .stat-label { font-size: 11px; color: var(--text-secondary); }
   }
 }
 
-.dashboard-content { display: flex; gap: 24px; }
+.dashboard-content { display: flex; gap: 16px; }
 .main-content { flex: 1; min-width: 0; }
-.sidebar-content { width: 320px; flex-shrink: 0; }
+.sidebar-content { width: 280px; flex-shrink: 0; }
 
 .section {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
   .section-header {
-    display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;
-    h2, h3 { font-size: 16px; font-weight: 600; margin: 0; }
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;
+    h2, h3 { font-size: 14px; font-weight: 600; margin: 0; }
   }
 }
 
 .quick-actions-section {
   .quick-actions-grid {
-    display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px;
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px;
   }
   .quick-action {
-    display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px;
-    background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px;
+    display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px;
+    background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px;
     cursor: pointer; transition: all 0.2s;
     &:hover { border-color: var(--primary-color); background: var(--bg-tertiary); }
-    span { font-size: 12px; color: var(--text-secondary); }
+    span { font-size: 11px; color: var(--text-secondary); }
   }
 }
 
-.server-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.server-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
 
 .server-card {
-  background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px;
-  padding: 16px; cursor: pointer; transition: all 0.2s;
-  &:hover { border-color: var(--primary-color); transform: translateY(-2px); }
+  background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px;
+  padding: 12px; cursor: pointer; transition: all 0.2s;
+  &:hover { border-color: var(--primary-color); transform: translateY(-1px); }
   &.connected { border-left: 3px solid var(--success-color); }
   &.error { border-left: 3px solid var(--danger-color); }
   .server-header {
-    display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+    display: flex; align-items: center; gap: 6px; margin-bottom: 10px;
     .server-status-indicator {
-      width: 10px; height: 10px; border-radius: 50%; background-color: var(--text-secondary);
+      width: 8px; height: 8px; border-radius: 50%; background-color: var(--text-secondary);
       &.connected { background-color: var(--success-color); }
       &.connecting { background-color: var(--warning-color); animation: pulse 1.5s infinite; }
       &.error { background-color: var(--danger-color); }
     }
-    .server-name { flex: 1; font-weight: 600; font-size: 15px; }
+    .server-name { flex: 1; font-weight: 600; font-size: 13px; }
   }
   .server-info {
-    margin-bottom: 12px;
-    .info-item { display: flex; justify-content: space-between; font-size: 13px; .label { color: var(--text-secondary); } }
+    margin-bottom: 10px;
+    .info-item { display: flex; justify-content: space-between; font-size: 11px; .label { color: var(--text-secondary); } }
   }
   .server-metrics {
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     .metric {
-      display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
-      .metric-label { width: 32px; font-size: 12px; color: var(--text-secondary); }
+      display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+      .metric-label { width: 28px; font-size: 11px; color: var(--text-secondary); }
       .el-progress { flex: 1; }
-      .metric-value { width: 48px; text-align: right; font-size: 12px; font-family: monospace; }
+      .metric-value { width: 40px; text-align: right; font-size: 11px; font-family: monospace; }
     }
   }
-  .server-status-text { font-size: 12px; text-align: right; }
+  .server-status-text { font-size: 11px; text-align: right; }
 }
 
 .alerts-section {
@@ -1078,28 +1069,28 @@ async function loadContainerAndServiceStats() {
 .health-overview {
   display: grid;
   grid-template-columns: 1fr 2fr;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .health-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: 8px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 14px;
 
   .health-score {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
 
     .score-circle {
       position: relative;
-      width: 80px;
-      height: 80px;
+      width: 60px;
+      height: 60px;
 
       svg {
         width: 100%;
@@ -1111,7 +1102,7 @@ async function loadContainerAndServiceStats() {
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        font-size: 24px;
+        font-size: 18px;
         font-weight: 700;
       }
     }
@@ -1123,15 +1114,15 @@ async function loadContainerAndServiceStats() {
     .health-label {
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 2px;
 
       .label-text {
-        font-size: 14px;
+        font-size: 12px;
         color: var(--text-secondary);
       }
 
       .status-text {
-        font-size: 18px;
+        font-size: 14px;
         font-weight: 600;
 
         &.healthy { color: #22c55e; }
@@ -1144,16 +1135,16 @@ async function loadContainerAndServiceStats() {
   .health-metrics {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
 
     .health-metric {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
 
       .metric-name {
-        width: 70px;
-        font-size: 13px;
+        width: 60px;
+        font-size: 11px;
         color: var(--text-secondary);
       }
 
@@ -1162,9 +1153,9 @@ async function loadContainerAndServiceStats() {
       }
 
       .metric-value {
-        width: 50px;
+        width: 45px;
         text-align: right;
-        font-size: 13px;
+        font-size: 11px;
         font-family: monospace;
       }
     }
@@ -1172,17 +1163,17 @@ async function loadContainerAndServiceStats() {
 
   .network-overview {
     display: flex;
-    gap: 24px;
-    padding-top: 12px;
+    gap: 16px;
+    padding-top: 10px;
     border-top: 1px solid var(--border-color);
 
     .network-stat {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
 
       .arrow {
-        font-size: 16px;
+        font-size: 14px;
         font-weight: bold;
 
         &.up { color: #22c55e; }
@@ -1191,7 +1182,7 @@ async function loadContainerAndServiceStats() {
 
       .net-value {
         font-family: monospace;
-        font-size: 14px;
+        font-size: 12px;
       }
     }
   }
@@ -1200,23 +1191,23 @@ async function loadContainerAndServiceStats() {
 .trend-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: 8px;
+  padding: 14px;
 
   .trend-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
 
     h3 {
-      font-size: 16px;
+      font-size: 14px;
       font-weight: 600;
       margin: 0;
     }
 
     .trend-period {
-      font-size: 12px;
+      font-size: 11px;
       color: var(--text-secondary);
     }
   }
@@ -1224,19 +1215,19 @@ async function loadContainerAndServiceStats() {
   .trend-chart {
     .chart-legend {
       display: flex;
-      gap: 16px;
-      margin-bottom: 12px;
+      gap: 12px;
+      margin-bottom: 10px;
 
       .legend-item {
         display: flex;
         align-items: center;
-        gap: 6px;
-        font-size: 12px;
+        gap: 4px;
+        font-size: 11px;
         color: var(--text-secondary);
 
         .dot {
-          width: 8px;
-          height: 8px;
+          width: 6px;
+          height: 6px;
           border-radius: 50%;
         }
 
@@ -1247,9 +1238,9 @@ async function loadContainerAndServiceStats() {
 
     .chart-area {
       position: relative;
-      height: 120px;
+      height: 100px;
       background: var(--bg-tertiary);
-      border-radius: 8px;
+      border-radius: 6px;
       overflow: hidden;
 
       .chart-grid {
@@ -1258,7 +1249,7 @@ async function loadContainerAndServiceStats() {
         display: flex;
         flex-direction: column;
         justify-content: space-between;
-        padding: 10px 0;
+        padding: 8px 0;
 
         .grid-line {
           height: 1px;
@@ -1269,9 +1260,9 @@ async function loadContainerAndServiceStats() {
 
       .chart-svg {
         position: absolute;
-        inset: 10px;
-        width: calc(100% - 20px);
-        height: calc(100% - 20px);
+        inset: 8px;
+        width: calc(100% - 16px);
+        height: calc(100% - 16px);
 
         .chart-line {
           stroke-linejoin: round;
@@ -1283,8 +1274,8 @@ async function loadContainerAndServiceStats() {
     .chart-labels {
       display: flex;
       justify-content: space-between;
-      margin-top: 8px;
-      font-size: 11px;
+      margin-top: 6px;
+      font-size: 10px;
       color: var(--text-secondary);
     }
   }
@@ -1293,9 +1284,9 @@ async function loadContainerAndServiceStats() {
 // 统计卡片细分样式
 .stat-breakdown {
   display: flex;
-  gap: 8px;
-  margin-top: 4px;
-  font-size: 11px;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 10px;
 
   .running {
     color: #22c55e;
@@ -1310,8 +1301,8 @@ async function loadContainerAndServiceStats() {
 .extended-stats {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 // 通用卡片头部
@@ -1319,10 +1310,10 @@ async function loadContainerAndServiceStats() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 
   h3 {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 600;
     margin: 0;
   }

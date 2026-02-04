@@ -70,6 +70,9 @@ export function setupIpcHandlers() {
     activeStreams.set(streamKey, stream)
 
     stream.on('data', (metrics: any) => {
+      // 调试：打印收到的指标数据结构
+      console.log('[Metrics Debug] Received metrics:', JSON.stringify(metrics, null, 2))
+      console.log('[Metrics Debug] cpu_usage:', metrics.cpu_usage, 'cpuUsage:', metrics.cpuUsage)
       event.sender.send(`metrics:${serverId}`, metrics)
     })
     stream.on('error', (error: Error) => {

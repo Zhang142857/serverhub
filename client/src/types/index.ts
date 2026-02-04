@@ -368,7 +368,7 @@ export interface ElectronAPI {
     list: () => Promise<string[]>
     getSystemInfo: (serverId: string) => Promise<any>  // Returns API format, store transforms it
     startMetrics: (serverId: string, interval: number) => Promise<{ success: boolean }>
-    executeCommand: (serverId: string, command: string, args?: string[]) => Promise<CommandResult>
+    executeCommand: (serverId: string, command: string, args?: string[], options?: { timeout?: number; sudo?: boolean }) => Promise<CommandResult>
     onMetrics: (serverId: string, callback: (metrics: Metrics) => void) => () => void
   }
   container: {

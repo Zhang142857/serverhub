@@ -180,6 +180,19 @@ export const useServerStore = defineStore('server', () => {
     }
   }
 
+  // 自动连接所有服务器
+  async function autoConnectAll() {
+    for (const server of servers.value) {
+      if (server.status === 'disconnected') {
+        try {
+          await connectServer(server.id)
+        } catch (e) {
+          console.error(`Auto connect failed for ${server.name}:`, e)
+        }
+      }
+    }
+  }
+
   // 初始化时加载
   loadFromStorage()
 
@@ -198,6 +211,7 @@ export const useServerStore = defineStore('server', () => {
     disconnectServer,
     addGroup,
     removeGroup,
-    loadFromStorage
+    loadFromStorage,
+    autoConnectAll
   }
 })

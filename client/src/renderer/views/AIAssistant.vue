@@ -71,7 +71,20 @@
       <!-- 聊天消息区域 -->
       <div class="chat-messages" ref="messagesContainer">
         <div v-if="messages.length === 0" class="welcome-message">
-          <div class="welcome-icon">🤖</div>
+          <div class="welcome-icon">
+            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="4" y="8" width="40" height="32" rx="4" fill="url(#ai-gradient)" />
+              <circle cx="16" cy="22" r="3" fill="#fff" />
+              <circle cx="32" cy="22" r="3" fill="#fff" />
+              <path d="M16 32c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#fff" stroke-width="2" stroke-linecap="round" />
+              <defs>
+                <linearGradient id="ai-gradient" x1="4" y1="8" x2="44" y2="40" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#6366f1" />
+                  <stop offset="1" stop-color="#8b5cf6" />
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
           <h3>你好，我是 ServerHub AI 助手</h3>
           <p>我可以帮助你管理服务器、执行命令、分析日志、诊断问题等。</p>
           <div class="quick-actions">

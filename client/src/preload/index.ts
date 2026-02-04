@@ -46,8 +46,8 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('server:getSystemInfo', serverId),
     startMetrics: (serverId: string, interval: number): Promise<{ success: boolean }> =>
       ipcRenderer.invoke('server:startMetrics', serverId, interval),
-    executeCommand: (serverId: string, command: string, args?: string[]): Promise<CommandResult> =>
-      ipcRenderer.invoke('server:executeCommand', serverId, command, args),
+    executeCommand: (serverId: string, command: string, args?: string[], options?: { timeout?: number; sudo?: boolean }): Promise<CommandResult> =>
+      ipcRenderer.invoke('server:executeCommand', serverId, command, args, options),
     onMetrics: (serverId: string, callback: (metrics: Metrics) => void): (() => void) => {
       const channel = `metrics:${serverId}`
       ipcRenderer.on(channel, (_, data) => callback(data))

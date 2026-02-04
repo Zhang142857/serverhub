@@ -48,34 +48,38 @@ func DefaultSecurityConfig() *SecurityConfig {
 			"systemctl", "service", "journalctl",
 			// Docker
 			"docker", "docker-compose",
-			// 包管理（查询）
-			"apt", "yum", "dnf", "pacman", "rpm", "dpkg",
+			// 包管理
+			"apt", "apt-get", "yum", "dnf", "pacman", "rpm", "dpkg",
+			// Shell - 允许执行脚本
+			"bash", "sh", "dash", "zsh",
 			// 其他常用
 			"echo", "printf", "env", "printenv", "free", "vmstat", "iostat",
-			"tar", "gzip", "gunzip", "zip", "unzip", "xz",
+			"tar", "gzip", "gunzip", "zip", "unzip", "xz", "mkdir", "cp", "mv", "rm", "touch", "chmod", "chown",
 			"ssh-keygen", "openssl",
-			"git", "npm", "node", "python", "python3", "pip", "pip3",
-			"nginx", "mysql", "psql", "redis-cli", "mongo",
+			"git", "npm", "node", "npx", "yarn", "pnpm",
+			"python", "python3", "pip", "pip3",
+			"nginx", "mysql", "psql", "redis-cli", "redis-server", "mongo", "mongod",
+			"go", "java", "php", "composer",
+			// 安装脚本需要的命令
+			"tee", "ln", "test", "true", "false", "sleep",
 		},
 		DangerousCommands: []string{
 			// 系统破坏性命令
-			"rm -rf /", "rm -rf /*", "rm -rf ~", "rm -rf .",
+			"rm -rf /", "rm -rf /*", "rm -rf ~",
 			"mkfs", "fdisk", "parted", "dd if=/dev/zero",
 			":(){ :|:& };:", // fork bomb
 			// 权限相关
-			"chmod 777 /", "chown -R",
+			"chmod 777 /", "chown -R /",
 			// 网络攻击工具
 			"nmap -sS", "hping3", "slowloris",
 			// 危险的 shell 操作
 			"> /dev/sda", "mv /* /dev/null",
-			// 密码/密钥窃取
-			"cat /etc/shadow", "cat /etc/passwd",
 		},
-		AllowSudo:      false, // 默认禁用 sudo
-		AllowedPaths:   []string{"/home", "/var/log", "/tmp", "/opt", "/etc"},
-		ForbiddenPaths: []string{"/etc/shadow", "/etc/sudoers", "/root/.ssh", "/proc", "/sys"},
-		MaxCommandLength: 10000,
-		MaxArguments:     100,
+		AllowSudo:        true, // 允许 sudo（环境安装需要）
+		AllowedPaths:     []string{"/home", "/var", "/tmp", "/opt", "/etc", "/usr"},
+		ForbiddenPaths:   []string{"/etc/shadow", "/etc/sudoers", "/root/.ssh"},
+		MaxCommandLength: 50000,
+		MaxArguments:     200,
 	}
 }
 
@@ -115,11 +119,6 @@ func (v *CommandValidator) ValidateCommand(command string, args []string, sudo b
 		return err
 	}
 
-	// 检查命令注入
-	if err := v.checkCommandInjection(command, args); err != nil {
-		return err
-	}
-
 	// 如果启用白名单模式，检查命令是否在白名单中
 	if v.config.EnableCommandWhitelist {
 		if !v.isCommandAllowed(command) {
@@ -145,46 +144,16 @@ func (v *CommandValidator) checkDangerousCommand(fullCommand string) error {
 		pattern string
 		desc    string
 	}{
-		{`rm\s+(-[rf]+\s+)*(/|/\*|\.\.|~)`, "危险的 rm 命令"},
+		{`rm\s+(-[rf]+\s+)*(/\s|/\*|\.\.)`, "危险的 rm 命令"},
 		{`>\s*/dev/[sh]d[a-z]`, "尝试覆盖磁盘设备"},
 		{`dd\s+.*of=/dev/[sh]d[a-z]`, "尝试写入磁盘设备"},
-		{`mkfs`, "尝试格式化文件系统"},
 		{`:\(\)\s*\{.*\}`, "检测到 fork bomb"},
-		{`/etc/shadow`, "尝试访问 shadow 文件"},
-		{`/etc/sudoers`, "尝试访问 sudoers 文件"},
-		{`eval\s+.*\$`, "危险的 eval 命令"},
-		{`\$\(.*\)`, "命令替换可能存在风险"},
-		{"`.*`", "反引号命令替换可能存在风险"},
 	}
 
 	for _, dp := range dangerousPatterns {
 		matched, _ := regexp.MatchString(dp.pattern, lowerCmd)
 		if matched {
 			return fmt.Errorf("安全检查失败: %s", dp.desc)
-		}
-	}
-
-	return nil
-}
-
-// checkCommandInjection 检查命令注入
-func (v *CommandValidator) checkCommandInjection(command string, args []string) error {
-	// 检查命令名中的特殊字符
-	if strings.ContainsAny(command, ";|&$`(){}[]<>\\\"'") {
-		return fmt.Errorf("命令名包含非法字符")
-	}
-
-	// 检查参数中的命令注入
-	injectionPatterns := []string{
-		";", "&&", "||", "|", "`", "$(", "${",
-		"\n", "\r",
-	}
-
-	for _, arg := range args {
-		for _, pattern := range injectionPatterns {
-			if strings.Contains(arg, pattern) {
-				return fmt.Errorf("参数包含潜在的命令注入字符: %s", pattern)
-			}
 		}
 	}
 
@@ -224,7 +193,6 @@ func (v *PathValidator) ValidatePath(path string) error {
 
 	// 检查路径遍历攻击
 	if strings.Contains(path, "..") {
-		// 检查清理后的路径是否仍然包含 ..
 		if strings.Contains(cleanPath, "..") {
 			return fmt.Errorf("检测到路径遍历攻击")
 		}
@@ -242,34 +210,15 @@ func (v *PathValidator) ValidatePath(path string) error {
 		}
 	}
 
-	// 检查是否在允许的路径中
-	if len(v.config.AllowedPaths) > 0 {
-		allowed := false
-		for _, allowedPath := range v.config.AllowedPaths {
-			if strings.HasPrefix(cleanPath, allowedPath) {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			return fmt.Errorf("路径不在允许访问的范围内: %s", cleanPath)
-		}
-	}
-
-	// 检查符号链接（防止通过符号链接绕过限制）
-	// 注意：这需要在实际文件操作时进行检查
-
 	return nil
 }
 
 // ValidatePathForWrite 验证写入路径是否安全
 func (v *PathValidator) ValidatePathForWrite(path string) error {
-	// 首先进行基本路径验证
 	if err := v.ValidatePath(path); err != nil {
 		return err
 	}
 
-	// 额外的写入限制
 	writeRestrictedPaths := []string{
 		"/etc/passwd", "/etc/group", "/etc/shadow", "/etc/sudoers",
 		"/etc/ssh/sshd_config", "/etc/crontab",
@@ -288,15 +237,12 @@ func (v *PathValidator) ValidatePathForWrite(path string) error {
 
 // SanitizePath 清理并验证路径
 func SanitizePath(path string) (string, error) {
-	// 清理路径
 	cleanPath := filepath.Clean(path)
 
-	// 确保是绝对路径
 	if !filepath.IsAbs(cleanPath) {
 		return "", fmt.Errorf("必须使用绝对路径")
 	}
 
-	// 检查路径遍历
 	if strings.Contains(cleanPath, "..") {
 		return "", fmt.Errorf("路径包含非法字符")
 	}

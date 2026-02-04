@@ -18,11 +18,22 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue'
 // @ts-ignore
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 import Sidebar from './components/layout/Sidebar.vue'
 import Header from './components/layout/Header.vue'
 import AIAssistant from './components/ai/AIAssistant.vue'
+import { useServerStore } from './stores/server'
+
+const serverStore = useServerStore()
+
+// 启动时自动连接所有服务器
+onMounted(() => {
+  setTimeout(() => {
+    serverStore.autoConnectAll()
+  }, 500)
+})
 </script>
 
 <style lang="scss">

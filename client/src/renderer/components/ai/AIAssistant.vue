@@ -28,12 +28,27 @@
 
         <!-- 欢迎界面 -->
         <div v-if="messages.length === 0" class="ai-welcome">
-          <div class="welcome-icon">🤖</div>
+          <div class="welcome-icon">
+            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="4" y="8" width="40" height="32" rx="4" fill="url(#ai-grad)" />
+              <circle cx="16" cy="22" r="3" fill="#fff" />
+              <circle cx="32" cy="22" r="3" fill="#fff" />
+              <path d="M16 32c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#fff" stroke-width="2" stroke-linecap="round" />
+              <defs>
+                <linearGradient id="ai-grad" x1="4" y1="8" x2="44" y2="40" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#6366f1" />
+                  <stop offset="1" stop-color="#8b5cf6" />
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
           <h3>你好，我是 ServerHub AI 助手</h3>
           <p>我可以帮助你管理服务器、分析日志、生成配置文件等。试试下面的快捷指令开始吧！</p>
           <div class="capability-cards">
             <div class="capability-card" v-for="cap in capabilities" :key="cap.title" @click="useSuggestion(cap.prompt)">
-              <div class="cap-icon">{{ cap.icon }}</div>
+              <div class="cap-icon">
+                <component :is="cap.icon" />
+              </div>
               <div class="cap-info">
                 <div class="cap-title">{{ cap.title }}</div>
                 <div class="cap-desc">{{ cap.desc }}</div>
@@ -120,7 +135,13 @@ import {
   Promotion,
   Loading,
   Delete,
-  CopyDocument
+  CopyDocument,
+  Monitor,
+  Box,
+  Document,
+  Setting,
+  Lock,
+  TrendCharts
 } from '@element-plus/icons-vue'
 
 interface Message {
@@ -130,7 +151,7 @@ interface Message {
 }
 
 interface Capability {
-  icon: string
+  icon: any
   title: string
   desc: string
   prompt: string
@@ -153,12 +174,12 @@ const suggestions = [
 ]
 
 const capabilities: Capability[] = [
-  { icon: '🖥️', title: '系统监控', desc: '查看 CPU、内存、磁盘使用情况', prompt: '查看当前服务器的系统状态' },
-  { icon: '🐳', title: '容器管理', desc: '管理 Docker 容器和镜像', prompt: '列出所有运行中的容器' },
-  { icon: '📊', title: '日志分析', desc: '分析系统和应用日志', prompt: '分析最近的错误日志' },
-  { icon: '⚙️', title: '配置生成', desc: '生成 Nginx、Docker 等配置', prompt: '帮我生成一个 nginx 反向代理配置' },
-  { icon: '🔒', title: '安全检查', desc: '检查系统安全配置', prompt: '检查服务器的安全配置' },
-  { icon: '🚀', title: '性能优化', desc: '分析和优化系统性能', prompt: '分析系统性能并给出优化建议' }
+  { icon: Monitor, title: '系统监控', desc: '查看 CPU、内存、磁盘使用情况', prompt: '查看当前服务器的系统状态' },
+  { icon: Box, title: '容器管理', desc: '管理 Docker 容器和镜像', prompt: '列出所有运行中的容器' },
+  { icon: Document, title: '日志分析', desc: '分析系统和应用日志', prompt: '分析最近的错误日志' },
+  { icon: Setting, title: '配置生成', desc: '生成 Nginx、Docker 等配置', prompt: '帮我生成一个 nginx 反向代理配置' },
+  { icon: Lock, title: '安全检查', desc: '检查系统安全配置', prompt: '检查服务器的安全配置' },
+  { icon: TrendCharts, title: '性能优化', desc: '分析和优化系统性能', prompt: '分析系统性能并给出优化建议' }
 ]
 
 // 自定义 Robot 图标组件
@@ -491,8 +512,14 @@ defineExpose({ open, close, toggle })
   text-align: center;
 
   .welcome-icon {
-    font-size: 48px;
+    width: 64px;
+    height: 64px;
     margin-bottom: 16px;
+    
+    svg {
+      width: 100%;
+      height: 100%;
+    }
   }
 
   h3 {
@@ -536,8 +563,15 @@ defineExpose({ open, close, toggle })
     }
 
     .cap-icon {
-      font-size: 24px;
+      width: 32px;
+      height: 32px;
       flex-shrink: 0;
+      color: var(--primary-color);
+      
+      :deep(svg) {
+        width: 100%;
+        height: 100%;
+      }
     }
 
     .cap-info {

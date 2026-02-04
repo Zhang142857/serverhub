@@ -2,7 +2,6 @@ package collector
 
 import (
 	"runtime"
-	"time"
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
@@ -191,8 +190,9 @@ func (c *Collector) getCpuInfo() (*CpuInfo, error) {
 		info.Frequency = cpuInfos[0].Mhz
 	}
 
-	// CPU 使用率
-	percentages, err := cpu.Percent(time.Second, true)
+	// CPU 使用率 - 使用 0 间隔获取即时值，不阻塞
+	// 第一次调用可能返回 0，但后续调用会返回正确值
+	percentages, err := cpu.Percent(0, true)
 	if err == nil {
 		info.UsagePerCore = percentages
 	}
