@@ -515,39 +515,87 @@
         </el-tab-pane>
         <el-tab-pane label="上传文件夹" name="folder">
           <div class="folder-upload-section">
-            <div class="folder-select" v-if="!selectedFolderPath" @click="selectLocalFolder">
-              <el-icon class="folder-icon"><FolderOpened /></el-icon>
-              <div class="folder-text">点击选择本地文件夹</div>
-              <div class="folder-hint">将整个文件夹上传到当前目录</div>
+            <!-- 选择本地文件夹 -->
+            <div class="upload-step">
+              <div class="step-label">
+                <span class="step-number">1</span>
+                <span>选择本地文件夹</span>
+              </div>
+              <div class="folder-select-area" @click="selectLocalFolder">
+                <template v-if="!selectedFolderPath">
+                  <el-icon class="folder-icon"><FolderOpened /></el-icon>
+                  <div class="folder-text">点击选择本地文件夹</div>
+                </template>
+                <template v-else>
+                  <el-icon><Folder /></el-icon>
+                  <span class="selected-folder-name">{{ selectedFolderName }}</span>
+                  <el-tag size="small" type="info">{{ folderFiles.length }} 个文件</el-tag>
+                  <el-button text type="primary" size="small" @click.stop="selectLocalFolder">重新选择</el-button>
+                </template>
+              </div>
             </div>
-            <div class="folder-selected" v-else>
-              <div class="folder-info">
-                <el-icon><Folder /></el-icon>
-                <span class="folder-path">{{ selectedFolderPath }}</span>
-                <el-button text type="primary" size="small" @click="selectLocalFolder">重新选择</el-button>
+
+            <!-- 文件预览 -->
+            <div class="folder-preview" v-if="folderFiles.length > 0">
+              <div class="preview-header">
+                <span>文件预览</span>
+                <span class="file-count">共 {{ folderFiles.length }} 个文件</span>
               </div>
-              <div class="folder-preview" v-if="folderFiles.length > 0">
-                <div class="preview-header">
-                  <span>文件预览</span>
-                  <span class="file-count">{{ folderFiles.length }} 个文件</span>
+              <div class="preview-list">
+                <div v-for="file in folderFiles.slice(0, 6)" :key="file.path" class="preview-item">
+                  <el-icon v-if="file.isDir" color="#f0b429"><Folder /></el-icon>
+                  <el-icon v-else color="#6b7280"><Document /></el-icon>
+                  <span class="file-name">{{ file.path }}</span>
+                  <span class="file-size" v-if="!file.isDir">{{ formatSize(file.size) }}</span>
                 </div>
-                <div class="preview-list">
-                  <div v-for="file in folderFiles.slice(0, 8)" :key="file.path" class="preview-item">
-                    <el-icon v-if="file.isDir"><Folder /></el-icon>
-                    <el-icon v-else><Document /></el-icon>
-                    <span class="file-name">{{ file.path }}</span>
-                    <span class="file-size" v-if="!file.isDir">{{ formatSize(file.size) }}</span>
-                  </div>
-                  <div v-if="folderFiles.length > 8" class="preview-more">
-                    ... 还有 {{ folderFiles.length - 8 }} 个文件
-                  </div>
+                <div v-if="folderFiles.length > 6" class="preview-more">
+                  ... 还有 {{ folderFiles.length - 6 }} 个文件
                 </div>
               </div>
-              <div class="folder-target">
-                <el-icon><Right /></el-icon>
-                <span>上传到:</span>
-                <code>{{ currentPath || '/' }}</code>
+            </div>
+
+            <!-- 选择上传目标位置 -->
+            <div class="upload-step">
+              <div class="step-label">
+                <span class="step-number">2</span>
+                <span>选择上传位置</span>
               </div>
+              <div class="target-path-section">
+                <div class="quick-paths">
+                  <span class="quick-label">快捷路径:</span>
+                  <el-tag 
+                    v-for="path in quickUploadPaths" 
+                    :key="path.path"
+                    :type="uploadTargetPath === path.path ? 'primary' : 'info'"
+                    class="quick-path-tag"
+                    @click="uploadTargetPath = path.path"
+                  >
+                    {{ path.label }}
+                  </el-tag>
+                </div>
+                <div class="target-input-row">
+                  <el-input 
+                    v-model="uploadTargetPath" 
+                    placeholder="输入目标路径"
+                    class="target-input"
+                  >
+                    <template #prepend>
+                      <el-icon><Folder /></el-icon>
+                    </template>
+                  </el-input>
+                  <el-button @click="showTargetBrowser = true">
+                    <el-icon><FolderOpened /></el-icon>
+                    浏览
+                  </el-button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 上传预览 -->
+            <div class="upload-preview" v-if="selectedFolderPath">
+              <el-icon><Right /></el-icon>
+              <span>将上传到:</span>
+              <code>{{ uploadFullTargetPath }}</code>
             </div>
           </div>
         </el-tab-pane>
@@ -810,6 +858,59 @@
 
     <!-- 点击其他地方关闭右键菜单 -->
     <div v-if="contextMenuVisible" class="context-menu-overlay" @click="contextMenuVisible = false"></div>
+
+    <!-- 目录浏览器对话框 -->
+    <el-dialog v-model="showTargetBrowser" title="选择上传目录" width="500px">
+      <div class="target-browser">
+        <div class="browser-path">
+          <el-breadcrumb separator="/">
+            <el-breadcrumb-item @click="browseToPath('/')" class="clickable">
+              <el-icon><HomeFilled /></el-icon>
+            </el-breadcrumb-item>
+            <el-breadcrumb-item
+              v-for="(part, index) in browserPathParts"
+              :key="index"
+              @click="browseToPathIndex(index)"
+              class="clickable"
+            >
+              {{ part }}
+            </el-breadcrumb-item>
+          </el-breadcrumb>
+        </div>
+        <div class="browser-list" v-loading="browserLoading">
+          <div 
+            class="browser-item parent" 
+            @click="browseToParent"
+            v-if="browserPath !== '/'"
+          >
+            <el-icon><Top /></el-icon>
+            <span>..</span>
+          </div>
+          <div 
+            v-for="dir in browserDirs" 
+            :key="dir.path"
+            class="browser-item"
+            :class="{ selected: browserPath === dir.path }"
+            @click="browseToPath(dir.path)"
+            @dblclick="selectBrowserPath(dir.path)"
+          >
+            <el-icon color="#f0b429"><Folder /></el-icon>
+            <span>{{ dir.name }}</span>
+          </div>
+          <div v-if="browserDirs.length === 0 && !browserLoading" class="browser-empty">
+            此目录下没有子文件夹
+          </div>
+        </div>
+        <div class="browser-selected">
+          <span>当前选择:</span>
+          <code>{{ browserPath }}</code>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showTargetBrowser = false">取消</el-button>
+        <el-button type="primary" @click="selectBrowserPath(browserPath)">选择此目录</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -918,6 +1019,39 @@ const uploadProgressText = ref('')
 // 上传文件夹
 const selectedFolderPath = ref('')
 const folderFiles = ref<{ name: string; path: string; size: number; isDir: boolean }[]>([])
+const uploadTargetPath = ref('/home')
+const showTargetBrowser = ref(false)
+const browserPath = ref('/')
+const browserDirs = ref<FileItem[]>([])
+const browserLoading = ref(false)
+
+// 快捷上传路径
+const quickUploadPaths = [
+  { label: '/home', path: '/home' },
+  { label: '/var/www', path: '/var/www' },
+  { label: '/opt', path: '/opt' },
+  { label: '/tmp', path: '/tmp' },
+  { label: '当前目录', path: '' }
+]
+
+// 计算属性：选中的文件夹名称
+const selectedFolderName = computed(() => {
+  if (!selectedFolderPath.value) return ''
+  return selectedFolderPath.value.split(/[/\\]/).pop() || 'folder'
+})
+
+// 计算属性：完整的上传目标路径
+const uploadFullTargetPath = computed(() => {
+  const base = uploadTargetPath.value || currentPath.value || '/'
+  const folderName = selectedFolderName.value
+  return `${base}/${folderName}`.replace(/\/+/g, '/')
+})
+
+// 计算属性：目录浏览器路径部分
+const browserPathParts = computed(() => {
+  if (!browserPath.value || browserPath.value === '/') return []
+  return browserPath.value.split('/').filter(Boolean)
+})
 
 // 重命名
 const showRenameDialog = ref(false)
@@ -1625,10 +1759,60 @@ async function selectLocalFolder() {
       const folderName = selectedFolderPath.value.split(/[/\\]/).pop() || 'folder'
       folderFiles.value = [{ name: folderName, path: folderName, size: 0, isDir: true }]
     }
+    
+    // 如果快捷路径选择了"当前目录"，更新为实际当前路径
+    if (uploadTargetPath.value === '') {
+      uploadTargetPath.value = currentPath.value || '/home'
+    }
   } catch (e) {
     ElMessage.error('选择文件夹失败: ' + (e as Error).message)
   }
 }
+
+// 目录浏览器：浏览到指定路径
+async function browseToPath(path: string) {
+  if (!selectedServer.value) return
+  
+  browserLoading.value = true
+  browserPath.value = path
+  
+  try {
+    const files = await window.electronAPI.server.listFiles(selectedServer.value, path)
+    browserDirs.value = files.filter((f: FileItem) => f.isDir).sort((a: FileItem, b: FileItem) => a.name.localeCompare(b.name))
+  } catch (e) {
+    ElMessage.error('加载目录失败: ' + (e as Error).message)
+    browserDirs.value = []
+  } finally {
+    browserLoading.value = false
+  }
+}
+
+// 目录浏览器：浏览到父目录
+function browseToParent() {
+  if (browserPath.value === '/') return
+  const parts = browserPath.value.split('/').filter(Boolean)
+  parts.pop()
+  browseToPath('/' + parts.join('/'))
+}
+
+// 目录浏览器：通过索引浏览
+function browseToPathIndex(index: number) {
+  const parts = browserPath.value.split('/').filter(Boolean)
+  browseToPath('/' + parts.slice(0, index + 1).join('/'))
+}
+
+// 目录浏览器：选择路径
+function selectBrowserPath(path: string) {
+  uploadTargetPath.value = path
+  showTargetBrowser.value = false
+}
+
+// 打开目录浏览器时初始化
+watch(showTargetBrowser, (val) => {
+  if (val) {
+    browseToPath(uploadTargetPath.value || '/')
+  }
+})
 
 // 上传文件夹
 async function uploadFolder() {
@@ -1639,9 +1823,10 @@ async function uploadFolder() {
   uploadProgressText.value = '准备上传...'
   
   try {
-    const targetPath = currentPath.value || '/'
+    // 使用用户选择的目标路径
+    const basePath = uploadTargetPath.value || currentPath.value || '/'
     const folderName = selectedFolderPath.value.split(/[/\\]/).pop() || 'upload'
-    const fullTargetPath = `${targetPath}/${folderName}`.replace(/\/+/g, '/')
+    const fullTargetPath = `${basePath}/${folderName}`.replace(/\/+/g, '/')
     
     // 创建目标目录
     uploadProgressText.value = '创建目标目录...'
@@ -2383,13 +2568,42 @@ onUnmounted(() => {
 
 // 上传文件夹样式
 .folder-upload-section {
-  .folder-select {
+  .upload-step {
+    margin-bottom: 20px;
+
+    .step-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      font-weight: 500;
+
+      .step-number {
+        width: 24px;
+        height: 24px;
+        background: var(--primary-color);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 600;
+      }
+    }
+  }
+
+  .folder-select-area {
     border: 2px dashed var(--border-color);
-    border-radius: 12px;
-    padding: 50px 30px;
-    text-align: center;
+    border-radius: 10px;
+    padding: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
     cursor: pointer;
     transition: all 0.2s;
+    flex-wrap: wrap;
 
     &:hover {
       border-color: var(--primary-color);
@@ -2397,110 +2611,193 @@ onUnmounted(() => {
     }
 
     .folder-icon {
-      font-size: 48px;
+      font-size: 36px;
       color: var(--text-secondary);
-      margin-bottom: 12px;
     }
 
     .folder-text {
-      font-size: 15px;
-      font-weight: 500;
-      margin-bottom: 6px;
+      color: var(--text-secondary);
     }
 
-    .folder-hint {
-      font-size: 12px;
+    .selected-folder-name {
+      font-family: 'Consolas', monospace;
+      font-weight: 500;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .folder-preview {
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    margin-bottom: 20px;
+
+    .preview-header {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+
+      .file-count {
+        color: var(--text-secondary);
+      }
+    }
+
+    .preview-list {
+      padding: 8px 16px;
+      max-height: 150px;
+      overflow-y: auto;
+
+      .preview-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 0;
+        font-size: 12px;
+
+        .file-name {
+          flex: 1;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .file-size {
+          color: var(--text-secondary);
+        }
+      }
+
+      .preview-more {
+        padding: 6px 0;
+        color: var(--text-secondary);
+        font-size: 12px;
+      }
+    }
+  }
+
+  .target-path-section {
+    .quick-paths {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+
+      .quick-label {
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+
+      .quick-path-tag {
+        cursor: pointer;
+        transition: all 0.2s;
+
+        &:hover {
+          opacity: 0.8;
+        }
+      }
+    }
+
+    .target-input-row {
+      display: flex;
+      gap: 8px;
+
+      .target-input {
+        flex: 1;
+      }
+    }
+  }
+
+  .upload-preview {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: rgba(99, 102, 241, 0.1);
+    border-radius: 8px;
+    font-size: 13px;
+    margin-top: 16px;
+
+    code {
+      font-family: 'Consolas', monospace;
+      color: var(--primary-color);
+      font-weight: 500;
+    }
+  }
+}
+
+// 目录浏览器样式
+.target-browser {
+  .browser-path {
+    padding: 12px 16px;
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    margin-bottom: 12px;
+
+    .el-breadcrumb {
+      font-size: 13px;
+    }
+
+    .clickable {
+      cursor: pointer;
+      &:hover {
+        color: var(--primary-color);
+      }
+    }
+  }
+
+  .browser-list {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+    min-height: 200px;
+
+    .browser-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      cursor: pointer;
+      transition: background 0.15s;
+
+      &:hover {
+        background: var(--bg-tertiary);
+      }
+
+      &.selected {
+        background: rgba(99, 102, 241, 0.1);
+      }
+
+      &.parent {
+        color: var(--text-secondary);
+        border-bottom: 1px solid var(--border-color);
+      }
+    }
+
+    .browser-empty {
+      padding: 40px;
+      text-align: center;
       color: var(--text-secondary);
     }
   }
 
-  .folder-selected {
-    .folder-info {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 12px 16px;
-      background: var(--bg-tertiary);
-      border-radius: 8px;
-      margin-bottom: 16px;
+  .browser-selected {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    margin-top: 12px;
+    font-size: 13px;
 
-      .folder-path {
-        flex: 1;
-        font-family: 'Consolas', monospace;
-        font-size: 13px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-    }
-
-    .folder-preview {
-      background: var(--bg-tertiary);
-      border-radius: 8px;
-      margin-bottom: 16px;
-
-      .preview-header {
-        padding: 10px 16px;
-        border-bottom: 1px solid var(--border-color);
-        display: flex;
-        justify-content: space-between;
-        font-size: 13px;
-
-        .file-count {
-          color: var(--text-secondary);
-        }
-      }
-
-      .preview-list {
-        padding: 8px 16px;
-        max-height: 180px;
-        overflow-y: auto;
-
-        .preview-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 5px 0;
-          font-size: 12px;
-
-          .el-icon {
-            color: var(--text-secondary);
-            flex-shrink: 0;
-          }
-
-          .file-name {
-            flex: 1;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-          }
-
-          .file-size {
-            color: var(--text-secondary);
-          }
-        }
-
-        .preview-more {
-          padding: 6px 0;
-          color: var(--text-secondary);
-          font-size: 12px;
-        }
-      }
-    }
-
-    .folder-target {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 16px;
-      background: rgba(99, 102, 241, 0.1);
-      border-radius: 8px;
-      font-size: 13px;
-
-      code {
-        font-family: 'Consolas', monospace;
-        color: var(--primary-color);
-      }
+    code {
+      font-family: 'Consolas', monospace;
+      color: var(--primary-color);
     }
   }
 }
