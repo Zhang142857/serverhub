@@ -55,49 +55,6 @@ jobs:
         working-directory: client
         run: pnpm install
 
-      # 生成图标文件 - Linux
-      - name: Generate icons (Linux)
-        if: matrix.platform == 'linux'
-        working-directory: client
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y librsvg2-bin
-          # 生成 PNG 图标
-          rsvg-convert -w 512 -h 512 build/logo.svg -o build/icon.png || echo "Icon generation failed, using default"
-
-      # 生成图标文件 - macOS
-      - name: Generate icons (macOS)
-        if: matrix.platform == 'mac'
-        working-directory: client
-        run: |
-          brew install librsvg
-          # 生成 PNG
-          rsvg-convert -w 512 -h 512 build/logo.svg -o build/icon.png
-          # 创建 iconset 目录
-          mkdir -p build/icon.iconset
-          # 生成各种尺寸
-          for size in 16 32 128 256 512; do
-            rsvg-convert -w $size -h $size build/logo.svg -o "build/icon.iconset/icon_${size}x${size}.png"
-            double=$((size * 2))
-            if [ $double -le 1024 ]; then
-              rsvg-convert -w $double -h $double build/logo.svg -o "build/icon.iconset/icon_${size}x${size}@2x.png"
-            fi
-          done
-          # 创建 icns
-          iconutil -c icns build/icon.iconset -o build/icon.icns || echo "ICNS generation failed"
-
-      # 生成图标文件 - Windows
-      - name: Generate icons (Windows)
-        if: matrix.platform == 'win'
-        working-directory: client
-        shell: bash
-        run: |
-          # 使用 npm 包生成图标
-          npm install -g svg2png-cli icon-gen || true
-          # 尝试生成 PNG
-          npx svg2png-cli build/logo.svg -o build/icon.png -w 256 -h 256 || echo "PNG generation skipped"
-          # 如果没有 ico，electron-builder 会使用默认图标
-
       - name: Build client
         working-directory: client
         env:
@@ -111,7 +68,6 @@ jobs:
           name: client-windows
           path: |
             client/release/*.exe
-            client/release/*.zip
 
       - name: Upload artifacts (macOS)
         if: matrix.platform == 'mac'
@@ -166,7 +122,7 @@ jobs:
             | 平台 | 文件 | 说明 |
             |------|------|------|
             | Windows | ServerHub-Setup-*.exe | Windows 安装程序 |
-            | Windows | ServerHub-*-portable.exe | Windows 便携版 |
+            | Windows | ServerHub-*.exe | Windows 便携版 |
             | macOS | ServerHub-*.dmg | macOS 安装包 |
             | Linux | ServerHub-*.AppImage | Linux AppImage |
             | Linux | ServerHub-*.deb | Debian/Ubuntu 安装包 |
