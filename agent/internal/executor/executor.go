@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"serverhub-agent/internal/security"
+	"github.com/serverhub/agent/internal/security"
 )
 
 // 全局安全验证器

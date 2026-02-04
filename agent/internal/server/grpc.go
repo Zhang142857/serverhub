@@ -12,7 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/serverhub/agent/internal/collector"
 	"github.com/serverhub/agent/internal/executor"
-	"serverhub-agent/internal/security"
+	"github.com/serverhub/agent/internal/security"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
