@@ -496,27 +496,85 @@
     </el-dialog>
 
     <!-- 上传对话框 -->
-    <el-dialog v-model="showUploadDialog" title="上传文件" width="500px">
-      <el-upload
-        class="upload-area"
-        drag
-        multiple
-        :auto-upload="false"
-        :file-list="uploadFileList"
-        @change="handleUploadChange"
-      >
-        <el-icon class="el-icon--upload"><Upload /></el-icon>
-        <div class="el-upload__text">
-          拖拽文件到此处，或 <em>点击选择</em>
-        </div>
-      </el-upload>
+    <el-dialog v-model="showUploadDialog" title="上传" width="600px">
+      <el-tabs v-model="uploadTab">
+        <el-tab-pane label="上传文件" name="files">
+          <el-upload
+            class="upload-area"
+            drag
+            multiple
+            :auto-upload="false"
+            :file-list="uploadFileList"
+            @change="handleUploadChange"
+          >
+            <el-icon class="el-icon--upload"><Upload /></el-icon>
+            <div class="el-upload__text">
+              拖拽文件到此处，或 <em>点击选择</em>
+            </div>
+          </el-upload>
+        </el-tab-pane>
+        <el-tab-pane label="上传文件夹" name="folder">
+          <div class="folder-upload-section">
+            <div class="folder-select" v-if="!selectedFolderPath" @click="selectLocalFolder">
+              <el-icon class="folder-icon"><FolderOpened /></el-icon>
+              <div class="folder-text">点击选择本地文件夹</div>
+              <div class="folder-hint">将整个文件夹上传到当前目录</div>
+            </div>
+            <div class="folder-selected" v-else>
+              <div class="folder-info">
+                <el-icon><Folder /></el-icon>
+                <span class="folder-path">{{ selectedFolderPath }}</span>
+                <el-button text type="primary" size="small" @click="selectLocalFolder">重新选择</el-button>
+              </div>
+              <div class="folder-preview" v-if="folderFiles.length > 0">
+                <div class="preview-header">
+                  <span>文件预览</span>
+                  <span class="file-count">{{ folderFiles.length }} 个文件</span>
+                </div>
+                <div class="preview-list">
+                  <div v-for="file in folderFiles.slice(0, 8)" :key="file.path" class="preview-item">
+                    <el-icon v-if="file.isDir"><Folder /></el-icon>
+                    <el-icon v-else><Document /></el-icon>
+                    <span class="file-name">{{ file.path }}</span>
+                    <span class="file-size" v-if="!file.isDir">{{ formatSize(file.size) }}</span>
+                  </div>
+                  <div v-if="folderFiles.length > 8" class="preview-more">
+                    ... 还有 {{ folderFiles.length - 8 }} 个文件
+                  </div>
+                </div>
+              </div>
+              <div class="folder-target">
+                <el-icon><Right /></el-icon>
+                <span>上传到:</span>
+                <code>{{ currentPath || '/' }}</code>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
       <div v-if="uploadProgress > 0" class="upload-progress">
-        <el-progress :percentage="uploadProgress" />
+        <el-progress :percentage="uploadProgress" :stroke-width="10" />
+        <div class="progress-text">{{ uploadProgressText }}</div>
       </div>
       <template #footer>
         <el-button @click="showUploadDialog = false">取消</el-button>
-        <el-button type="primary" @click="uploadFiles" :loading="uploading">
-          上传 ({{ uploadFileList.length }})
+        <el-button 
+          v-if="uploadTab === 'files'" 
+          type="primary" 
+          @click="uploadFiles" 
+          :loading="uploading"
+          :disabled="uploadFileList.length === 0"
+        >
+          上传文件 ({{ uploadFileList.length }})
+        </el-button>
+        <el-button 
+          v-else 
+          type="primary" 
+          @click="uploadFolder" 
+          :loading="uploading"
+          :disabled="!selectedFolderPath"
+        >
+          上传文件夹
         </el-button>
       </template>
     </el-dialog>
@@ -767,7 +825,7 @@ import {
   MoreFilled, View, Edit, Check, Picture, Star, Plus, Close,
   House, Position, CopyDocument, Scissor, Files, InfoFilled,
   VideoCamera, Headset, ZoomIn, EditPen, Rank, Lock, FolderOpened,
-  DocumentCopy, Clock, Switch
+  DocumentCopy, Clock, Switch, Right
 } from '@element-plus/icons-vue'
 
 // 最近访问记录
@@ -851,9 +909,15 @@ const newFileName = ref('')
 
 // 上传
 const showUploadDialog = ref(false)
+const uploadTab = ref('files')
 const uploadFileList = ref<UploadFile[]>([])
 const uploading = ref(false)
 const uploadProgress = ref(0)
+const uploadProgressText = ref('')
+
+// 上传文件夹
+const selectedFolderPath = ref('')
+const folderFiles = ref<{ name: string; path: string; size: number; isDir: boolean }[]>([])
 
 // 重命名
 const showRenameDialog = ref(false)
@@ -1539,6 +1603,102 @@ async function uploadFiles() {
   }
 }
 
+// 选择本地文件夹
+async function selectLocalFolder() {
+  try {
+    const result = await window.electronAPI.dialog.showOpenDialog({
+      properties: ['openDirectory'],
+      title: '选择要上传的文件夹'
+    })
+    
+    if (result.canceled || !result.filePaths.length) return
+    
+    selectedFolderPath.value = result.filePaths[0]
+    
+    // 扫描文件夹
+    try {
+      folderFiles.value = await window.electronAPI.fs.scanDirectory(selectedFolderPath.value, {
+        ignore: ['node_modules', '.git', '__pycache__', '.venv', 'venv', '.next', '.nuxt']
+      })
+    } catch {
+      // 如果扫描失败，显示基本信息
+      const folderName = selectedFolderPath.value.split(/[/\\]/).pop() || 'folder'
+      folderFiles.value = [{ name: folderName, path: folderName, size: 0, isDir: true }]
+    }
+  } catch (e) {
+    ElMessage.error('选择文件夹失败: ' + (e as Error).message)
+  }
+}
+
+// 上传文件夹
+async function uploadFolder() {
+  if (!selectedServer.value || !selectedFolderPath.value) return
+  
+  uploading.value = true
+  uploadProgress.value = 0
+  uploadProgressText.value = '准备上传...'
+  
+  try {
+    const targetPath = currentPath.value || '/'
+    const folderName = selectedFolderPath.value.split(/[/\\]/).pop() || 'upload'
+    const fullTargetPath = `${targetPath}/${folderName}`.replace(/\/+/g, '/')
+    
+    // 创建目标目录
+    uploadProgressText.value = '创建目标目录...'
+    await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', `mkdir -p "${fullTargetPath}"`])
+    uploadProgress.value = 10
+    
+    // 打包文件夹
+    uploadProgressText.value = '打包文件...'
+    const tarData = await window.electronAPI.fs.packDirectory(selectedFolderPath.value, {
+      ignore: ['node_modules', '.git', '__pycache__', '.venv', 'venv', '.next', '.nuxt', 'target', 'vendor']
+    })
+    uploadProgress.value = 30
+    
+    // 转换为 base64 并分块上传
+    uploadProgressText.value = '上传中...'
+    const base64 = tarData.toString('base64')
+    const chunkSize = 500 * 1024
+    const chunks = Math.ceil(base64.length / chunkSize)
+    
+    // 清空临时文件
+    await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 'rm -f /tmp/upload.tar.gz.b64'])
+    
+    for (let i = 0; i < chunks; i++) {
+      const chunk = base64.slice(i * chunkSize, (i + 1) * chunkSize)
+      await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', `printf '%s' "${chunk}" >> /tmp/upload.tar.gz.b64`])
+      uploadProgress.value = 30 + Math.floor((i / chunks) * 50)
+      uploadProgressText.value = `上传中... ${i + 1}/${chunks}`
+    }
+    
+    // 解码并解压
+    uploadProgressText.value = '解压文件...'
+    uploadProgress.value = 85
+    await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 
+      `base64 -d /tmp/upload.tar.gz.b64 > /tmp/upload.tar.gz && tar -xzf /tmp/upload.tar.gz -C "${fullTargetPath}" && rm -f /tmp/upload.tar.gz /tmp/upload.tar.gz.b64`
+    ])
+    
+    uploadProgress.value = 100
+    uploadProgressText.value = '上传完成!'
+    
+    // 刷新文件列表
+    await loadFiles()
+    
+    showUploadDialog.value = false
+    selectedFolderPath.value = ''
+    folderFiles.value = []
+    uploadProgress.value = 0
+    uploadProgressText.value = ''
+    
+    ElMessage.success(`文件夹已上传到 ${fullTargetPath}`)
+  } catch (e) {
+    uploadProgressText.value = '上传失败: ' + (e as Error).message
+    ElMessage.error('上传失败: ' + (e as Error).message)
+  } finally {
+    uploading.value = false
+  }
+}
+
 // 下载
 function downloadFile(file: FileItem) {
   ElMessage.success(`开始下载: ${file.name}`)
@@ -2212,6 +2372,137 @@ onUnmounted(() => {
 
 .upload-progress {
   margin-top: 16px;
+  
+  .progress-text {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+  }
+}
+
+// 上传文件夹样式
+.folder-upload-section {
+  .folder-select {
+    border: 2px dashed var(--border-color);
+    border-radius: 12px;
+    padding: 50px 30px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+      border-color: var(--primary-color);
+      background: rgba(99, 102, 241, 0.05);
+    }
+
+    .folder-icon {
+      font-size: 48px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+
+    .folder-text {
+      font-size: 15px;
+      font-weight: 500;
+      margin-bottom: 6px;
+    }
+
+    .folder-hint {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+  }
+
+  .folder-selected {
+    .folder-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      margin-bottom: 16px;
+
+      .folder-path {
+        flex: 1;
+        font-family: 'Consolas', monospace;
+        font-size: 13px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    .folder-preview {
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      margin-bottom: 16px;
+
+      .preview-header {
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+
+        .file-count {
+          color: var(--text-secondary);
+        }
+      }
+
+      .preview-list {
+        padding: 8px 16px;
+        max-height: 180px;
+        overflow-y: auto;
+
+        .preview-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 5px 0;
+          font-size: 12px;
+
+          .el-icon {
+            color: var(--text-secondary);
+            flex-shrink: 0;
+          }
+
+          .file-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .file-size {
+            color: var(--text-secondary);
+          }
+        }
+
+        .preview-more {
+          padding: 6px 0;
+          color: var(--text-secondary);
+          font-size: 12px;
+        }
+      }
+    }
+
+    .folder-target {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      background: rgba(99, 102, 241, 0.1);
+      border-radius: 8px;
+      font-size: 13px;
+
+      code {
+        font-family: 'Consolas', monospace;
+        color: var(--primary-color);
+      }
+    }
+  }
 }
 
 .chmod-preview {
