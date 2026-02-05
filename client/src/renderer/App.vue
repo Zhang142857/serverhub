@@ -13,6 +13,7 @@
         </div>
       </div>
       <AIAssistant />
+      <TaskPanel />
     </div>
   </el-config-provider>
 </template>
@@ -24,6 +25,7 @@ import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 import Sidebar from './components/layout/Sidebar.vue'
 import Header from './components/layout/Header.vue'
 import AIAssistant from './components/ai/AIAssistant.vue'
+import TaskPanel from './components/layout/TaskPanel.vue'
 import { useServerStore } from './stores/server'
 
 const serverStore = useServerStore()

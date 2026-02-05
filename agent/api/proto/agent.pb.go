@@ -2867,6 +2867,380 @@ func (x *ActionResponse) GetError() string {
 	return ""
 }
 
+// Docker Hub 搜索
+type DockerSearchRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Query         string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	PageSize      int32                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	Page          int32                  `protobuf:"varint,3,opt,name=page,proto3" json:"page,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DockerSearchRequest) Reset() {
+	*x = DockerSearchRequest{}
+	mi := &file_proto_agent_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DockerSearchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DockerSearchRequest) ProtoMessage() {}
+
+func (x *DockerSearchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_agent_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DockerSearchRequest.ProtoReflect.Descriptor instead.
+func (*DockerSearchRequest) Descriptor() ([]byte, []int) {
+	return file_proto_agent_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *DockerSearchRequest) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+func (x *DockerSearchRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *DockerSearchRequest) GetPage() int32 {
+	if x != nil {
+		return x.Page
+	}
+	return 0
+}
+
+type DockerSearchResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	Results       []*DockerImage         `protobuf:"bytes,3,rep,name=results,proto3" json:"results,omitempty"`
+	TotalCount    int32                  `protobuf:"varint,4,opt,name=total_count,json=totalCount,proto3" json:"total_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DockerSearchResponse) Reset() {
+	*x = DockerSearchResponse{}
+	mi := &file_proto_agent_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DockerSearchResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DockerSearchResponse) ProtoMessage() {}
+
+func (x *DockerSearchResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_agent_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DockerSearchResponse.ProtoReflect.Descriptor instead.
+func (*DockerSearchResponse) Descriptor() ([]byte, []int) {
+	return file_proto_agent_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *DockerSearchResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *DockerSearchResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *DockerSearchResponse) GetResults() []*DockerImage {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
+func (x *DockerSearchResponse) GetTotalCount() int32 {
+	if x != nil {
+		return x.TotalCount
+	}
+	return 0
+}
+
+type DockerImage struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	StarCount     int64                  `protobuf:"varint,3,opt,name=star_count,json=starCount,proto3" json:"star_count,omitempty"`
+	IsOfficial    bool                   `protobuf:"varint,4,opt,name=is_official,json=isOfficial,proto3" json:"is_official,omitempty"`
+	IsAutomated   bool                   `protobuf:"varint,5,opt,name=is_automated,json=isAutomated,proto3" json:"is_automated,omitempty"`
+	PullCount     int64                  `protobuf:"varint,6,opt,name=pull_count,json=pullCount,proto3" json:"pull_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DockerImage) Reset() {
+	*x = DockerImage{}
+	mi := &file_proto_agent_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DockerImage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DockerImage) ProtoMessage() {}
+
+func (x *DockerImage) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_agent_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DockerImage.ProtoReflect.Descriptor instead.
+func (*DockerImage) Descriptor() ([]byte, []int) {
+	return file_proto_agent_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *DockerImage) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *DockerImage) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *DockerImage) GetStarCount() int64 {
+	if x != nil {
+		return x.StarCount
+	}
+	return 0
+}
+
+func (x *DockerImage) GetIsOfficial() bool {
+	if x != nil {
+		return x.IsOfficial
+	}
+	return false
+}
+
+func (x *DockerImage) GetIsAutomated() bool {
+	if x != nil {
+		return x.IsAutomated
+	}
+	return false
+}
+
+func (x *DockerImage) GetPullCount() int64 {
+	if x != nil {
+		return x.PullCount
+	}
+	return 0
+}
+
+// HTTP 代理请求
+type HttpProxyRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Url            string                 `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
+	Method         string                 `protobuf:"bytes,2,opt,name=method,proto3" json:"method,omitempty"`
+	Headers        map[string]string      `protobuf:"bytes,3,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Body           []byte                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
+	TimeoutSeconds int32                  `protobuf:"varint,5,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *HttpProxyRequest) Reset() {
+	*x = HttpProxyRequest{}
+	mi := &file_proto_agent_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HttpProxyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HttpProxyRequest) ProtoMessage() {}
+
+func (x *HttpProxyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_agent_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HttpProxyRequest.ProtoReflect.Descriptor instead.
+func (*HttpProxyRequest) Descriptor() ([]byte, []int) {
+	return file_proto_agent_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *HttpProxyRequest) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *HttpProxyRequest) GetMethod() string {
+	if x != nil {
+		return x.Method
+	}
+	return ""
+}
+
+func (x *HttpProxyRequest) GetHeaders() map[string]string {
+	if x != nil {
+		return x.Headers
+	}
+	return nil
+}
+
+func (x *HttpProxyRequest) GetBody() []byte {
+	if x != nil {
+		return x.Body
+	}
+	return nil
+}
+
+func (x *HttpProxyRequest) GetTimeoutSeconds() int32 {
+	if x != nil {
+		return x.TimeoutSeconds
+	}
+	return 0
+}
+
+type HttpProxyResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	StatusCode    int32                  `protobuf:"varint,2,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
+	StatusText    string                 `protobuf:"bytes,3,opt,name=status_text,json=statusText,proto3" json:"status_text,omitempty"`
+	Headers       map[string]string      `protobuf:"bytes,4,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Body          []byte                 `protobuf:"bytes,5,opt,name=body,proto3" json:"body,omitempty"`
+	Error         string                 `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HttpProxyResponse) Reset() {
+	*x = HttpProxyResponse{}
+	mi := &file_proto_agent_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HttpProxyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HttpProxyResponse) ProtoMessage() {}
+
+func (x *HttpProxyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_agent_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HttpProxyResponse.ProtoReflect.Descriptor instead.
+func (*HttpProxyResponse) Descriptor() ([]byte, []int) {
+	return file_proto_agent_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *HttpProxyResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *HttpProxyResponse) GetStatusCode() int32 {
+	if x != nil {
+		return x.StatusCode
+	}
+	return 0
+}
+
+func (x *HttpProxyResponse) GetStatusText() string {
+	if x != nil {
+		return x.StatusText
+	}
+	return ""
+}
+
+func (x *HttpProxyResponse) GetHeaders() map[string]string {
+	if x != nil {
+		return x.Headers
+	}
+	return nil
+}
+
+func (x *HttpProxyResponse) GetBody() []byte {
+	if x != nil {
+		return x.Body
+	}
+	return nil
+}
+
+func (x *HttpProxyResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_proto_agent_proto protoreflect.FileDescriptor
 
 const file_proto_agent_proto_rawDesc = "" +
@@ -3113,13 +3487,54 @@ const file_proto_agent_proto_rawDesc = "" +
 	"\x0eActionResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x14\n" +
-	"\x05error\x18\x03 \x01(\tR\x05error*r\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"\\\n" +
+	"\x13DockerSearchRequest\x12\x14\n" +
+	"\x05query\x18\x01 \x01(\tR\x05query\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x12\n" +
+	"\x04page\x18\x03 \x01(\x05R\x04page\"\x99\x01\n" +
+	"\x14DockerSearchResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\x120\n" +
+	"\aresults\x18\x03 \x03(\v2\x16.serverhub.DockerImageR\aresults\x12\x1f\n" +
+	"\vtotal_count\x18\x04 \x01(\x05R\n" +
+	"totalCount\"\xc5\x01\n" +
+	"\vDockerImage\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x1d\n" +
+	"\n" +
+	"star_count\x18\x03 \x01(\x03R\tstarCount\x12\x1f\n" +
+	"\vis_official\x18\x04 \x01(\bR\n" +
+	"isOfficial\x12!\n" +
+	"\fis_automated\x18\x05 \x01(\bR\visAutomated\x12\x1d\n" +
+	"\n" +
+	"pull_count\x18\x06 \x01(\x03R\tpullCount\"\xf9\x01\n" +
+	"\x10HttpProxyRequest\x12\x10\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url\x12\x16\n" +
+	"\x06method\x18\x02 \x01(\tR\x06method\x12B\n" +
+	"\aheaders\x18\x03 \x03(\v2(.serverhub.HttpProxyRequest.HeadersEntryR\aheaders\x12\x12\n" +
+	"\x04body\x18\x04 \x01(\fR\x04body\x12'\n" +
+	"\x0ftimeout_seconds\x18\x05 \x01(\x05R\x0etimeoutSeconds\x1a:\n" +
+	"\fHeadersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x9a\x02\n" +
+	"\x11HttpProxyResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1f\n" +
+	"\vstatus_code\x18\x02 \x01(\x05R\n" +
+	"statusCode\x12\x1f\n" +
+	"\vstatus_text\x18\x03 \x01(\tR\n" +
+	"statusText\x12C\n" +
+	"\aheaders\x18\x04 \x03(\v2).serverhub.HttpProxyResponse.HeadersEntryR\aheaders\x12\x12\n" +
+	"\x04body\x18\x05 \x01(\fR\x04body\x12\x14\n" +
+	"\x05error\x18\x06 \x01(\tR\x05error\x1a:\n" +
+	"\fHeadersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*r\n" +
 	"\rServiceAction\x12\x11\n" +
 	"\rSERVICE_START\x10\x00\x12\x10\n" +
 	"\fSERVICE_STOP\x10\x01\x12\x13\n" +
 	"\x0fSERVICE_RESTART\x10\x02\x12\x12\n" +
 	"\x0eSERVICE_ENABLE\x10\x03\x12\x13\n" +
-	"\x0fSERVICE_DISABLE\x10\x042\xa9\b\n" +
+	"\x0fSERVICE_DISABLE\x10\x042\xcc\t\n" +
 	"\fAgentService\x12?\n" +
 	"\fAuthenticate\x12\x16.serverhub.AuthRequest\x1a\x17.serverhub.AuthResponse\x128\n" +
 	"\rGetSystemInfo\x12\x10.serverhub.Empty\x1a\x15.serverhub.SystemInfo\x12=\n" +
@@ -3139,7 +3554,9 @@ const file_proto_agent_proto_rawDesc = "" +
 	"\fListServices\x12\x18.serverhub.ServiceFilter\x1a\x16.serverhub.ServiceList\x12K\n" +
 	"\rServiceAction\x12\x1f.serverhub.ServiceActionRequest\x1a\x19.serverhub.ActionResponse\x12A\n" +
 	"\rListProcesses\x12\x18.serverhub.ProcessFilter\x1a\x16.serverhub.ProcessList\x12G\n" +
-	"\vKillProcess\x12\x1d.serverhub.KillProcessRequest\x1a\x19.serverhub.ActionResponseB&Z$github.com/serverhub/agent/api/protob\x06proto3"
+	"\vKillProcess\x12\x1d.serverhub.KillProcessRequest\x1a\x19.serverhub.ActionResponse\x12R\n" +
+	"\x0fSearchDockerHub\x12\x1e.serverhub.DockerSearchRequest\x1a\x1f.serverhub.DockerSearchResponse\x12M\n" +
+	"\x10ProxyHttpRequest\x12\x1b.serverhub.HttpProxyRequest\x1a\x1c.serverhub.HttpProxyResponseB&Z$github.com/serverhub/agent/api/protob\x06proto3"
 
 var (
 	file_proto_agent_proto_rawDescOnce sync.Once
@@ -3154,7 +3571,7 @@ func file_proto_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_proto_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
+var file_proto_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 49)
 var file_proto_agent_proto_goTypes = []any{
 	(ServiceAction)(0),           // 0: serverhub.ServiceAction
 	(*Empty)(nil),                // 1: serverhub.Empty
@@ -3197,8 +3614,15 @@ var file_proto_agent_proto_goTypes = []any{
 	(*ProcessInfo)(nil),          // 38: serverhub.ProcessInfo
 	(*KillProcessRequest)(nil),   // 39: serverhub.KillProcessRequest
 	(*ActionResponse)(nil),       // 40: serverhub.ActionResponse
-	nil,                          // 41: serverhub.CommandRequest.EnvEntry
-	nil,                          // 42: serverhub.ShellStart.EnvEntry
+	(*DockerSearchRequest)(nil),  // 41: serverhub.DockerSearchRequest
+	(*DockerSearchResponse)(nil), // 42: serverhub.DockerSearchResponse
+	(*DockerImage)(nil),          // 43: serverhub.DockerImage
+	(*HttpProxyRequest)(nil),     // 44: serverhub.HttpProxyRequest
+	(*HttpProxyResponse)(nil),    // 45: serverhub.HttpProxyResponse
+	nil,                          // 46: serverhub.CommandRequest.EnvEntry
+	nil,                          // 47: serverhub.ShellStart.EnvEntry
+	nil,                          // 48: serverhub.HttpProxyRequest.HeadersEntry
+	nil,                          // 49: serverhub.HttpProxyResponse.HeadersEntry
 }
 var file_proto_agent_proto_depIdxs = []int32{
 	5,  // 0: serverhub.SystemInfo.cpu:type_name -> serverhub.CpuInfo
@@ -3208,10 +3632,10 @@ var file_proto_agent_proto_depIdxs = []int32{
 	9,  // 4: serverhub.SystemInfo.gpus:type_name -> serverhub.GpuInfo
 	12, // 5: serverhub.Metrics.disk_metrics:type_name -> serverhub.DiskMetric
 	13, // 6: serverhub.Metrics.network_metrics:type_name -> serverhub.NetworkMetric
-	41, // 7: serverhub.CommandRequest.env:type_name -> serverhub.CommandRequest.EnvEntry
+	46, // 7: serverhub.CommandRequest.env:type_name -> serverhub.CommandRequest.EnvEntry
 	17, // 8: serverhub.ShellInput.start:type_name -> serverhub.ShellStart
 	18, // 9: serverhub.ShellInput.resize:type_name -> serverhub.ShellResize
-	42, // 10: serverhub.ShellStart.env:type_name -> serverhub.ShellStart.EnvEntry
+	47, // 10: serverhub.ShellStart.env:type_name -> serverhub.ShellStart.EnvEntry
 	22, // 11: serverhub.FileContent.info:type_name -> serverhub.FileInfo
 	25, // 12: serverhub.FileChunk.start:type_name -> serverhub.FileUploadStart
 	26, // 13: serverhub.FileChunk.end:type_name -> serverhub.FileUploadEnd
@@ -3219,43 +3643,50 @@ var file_proto_agent_proto_depIdxs = []int32{
 	34, // 15: serverhub.ServiceList.services:type_name -> serverhub.ServiceInfo
 	0,  // 16: serverhub.ServiceActionRequest.action:type_name -> serverhub.ServiceAction
 	38, // 17: serverhub.ProcessList.processes:type_name -> serverhub.ProcessInfo
-	2,  // 18: serverhub.AgentService.Authenticate:input_type -> serverhub.AuthRequest
-	1,  // 19: serverhub.AgentService.GetSystemInfo:input_type -> serverhub.Empty
-	10, // 20: serverhub.AgentService.GetMetrics:input_type -> serverhub.MetricsRequest
-	14, // 21: serverhub.AgentService.ExecuteCommand:input_type -> serverhub.CommandRequest
-	16, // 22: serverhub.AgentService.ExecuteShell:input_type -> serverhub.ShellInput
-	20, // 23: serverhub.AgentService.ReadFile:input_type -> serverhub.FileRequest
-	23, // 24: serverhub.AgentService.WriteFile:input_type -> serverhub.WriteFileRequest
-	28, // 25: serverhub.AgentService.ListDirectory:input_type -> serverhub.DirRequest
-	20, // 26: serverhub.AgentService.DeleteFile:input_type -> serverhub.FileRequest
-	24, // 27: serverhub.AgentService.UploadFile:input_type -> serverhub.FileChunk
-	20, // 28: serverhub.AgentService.DownloadFile:input_type -> serverhub.FileRequest
-	30, // 29: serverhub.AgentService.TailLog:input_type -> serverhub.LogRequest
-	32, // 30: serverhub.AgentService.ListServices:input_type -> serverhub.ServiceFilter
-	35, // 31: serverhub.AgentService.ServiceAction:input_type -> serverhub.ServiceActionRequest
-	36, // 32: serverhub.AgentService.ListProcesses:input_type -> serverhub.ProcessFilter
-	39, // 33: serverhub.AgentService.KillProcess:input_type -> serverhub.KillProcessRequest
-	3,  // 34: serverhub.AgentService.Authenticate:output_type -> serverhub.AuthResponse
-	4,  // 35: serverhub.AgentService.GetSystemInfo:output_type -> serverhub.SystemInfo
-	11, // 36: serverhub.AgentService.GetMetrics:output_type -> serverhub.Metrics
-	15, // 37: serverhub.AgentService.ExecuteCommand:output_type -> serverhub.CommandResponse
-	19, // 38: serverhub.AgentService.ExecuteShell:output_type -> serverhub.ShellOutput
-	21, // 39: serverhub.AgentService.ReadFile:output_type -> serverhub.FileContent
-	40, // 40: serverhub.AgentService.WriteFile:output_type -> serverhub.ActionResponse
-	29, // 41: serverhub.AgentService.ListDirectory:output_type -> serverhub.DirContent
-	40, // 42: serverhub.AgentService.DeleteFile:output_type -> serverhub.ActionResponse
-	27, // 43: serverhub.AgentService.UploadFile:output_type -> serverhub.UploadResponse
-	24, // 44: serverhub.AgentService.DownloadFile:output_type -> serverhub.FileChunk
-	31, // 45: serverhub.AgentService.TailLog:output_type -> serverhub.LogLine
-	33, // 46: serverhub.AgentService.ListServices:output_type -> serverhub.ServiceList
-	40, // 47: serverhub.AgentService.ServiceAction:output_type -> serverhub.ActionResponse
-	37, // 48: serverhub.AgentService.ListProcesses:output_type -> serverhub.ProcessList
-	40, // 49: serverhub.AgentService.KillProcess:output_type -> serverhub.ActionResponse
-	34, // [34:50] is the sub-list for method output_type
-	18, // [18:34] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	43, // 18: serverhub.DockerSearchResponse.results:type_name -> serverhub.DockerImage
+	48, // 19: serverhub.HttpProxyRequest.headers:type_name -> serverhub.HttpProxyRequest.HeadersEntry
+	49, // 20: serverhub.HttpProxyResponse.headers:type_name -> serverhub.HttpProxyResponse.HeadersEntry
+	2,  // 21: serverhub.AgentService.Authenticate:input_type -> serverhub.AuthRequest
+	1,  // 22: serverhub.AgentService.GetSystemInfo:input_type -> serverhub.Empty
+	10, // 23: serverhub.AgentService.GetMetrics:input_type -> serverhub.MetricsRequest
+	14, // 24: serverhub.AgentService.ExecuteCommand:input_type -> serverhub.CommandRequest
+	16, // 25: serverhub.AgentService.ExecuteShell:input_type -> serverhub.ShellInput
+	20, // 26: serverhub.AgentService.ReadFile:input_type -> serverhub.FileRequest
+	23, // 27: serverhub.AgentService.WriteFile:input_type -> serverhub.WriteFileRequest
+	28, // 28: serverhub.AgentService.ListDirectory:input_type -> serverhub.DirRequest
+	20, // 29: serverhub.AgentService.DeleteFile:input_type -> serverhub.FileRequest
+	24, // 30: serverhub.AgentService.UploadFile:input_type -> serverhub.FileChunk
+	20, // 31: serverhub.AgentService.DownloadFile:input_type -> serverhub.FileRequest
+	30, // 32: serverhub.AgentService.TailLog:input_type -> serverhub.LogRequest
+	32, // 33: serverhub.AgentService.ListServices:input_type -> serverhub.ServiceFilter
+	35, // 34: serverhub.AgentService.ServiceAction:input_type -> serverhub.ServiceActionRequest
+	36, // 35: serverhub.AgentService.ListProcesses:input_type -> serverhub.ProcessFilter
+	39, // 36: serverhub.AgentService.KillProcess:input_type -> serverhub.KillProcessRequest
+	41, // 37: serverhub.AgentService.SearchDockerHub:input_type -> serverhub.DockerSearchRequest
+	44, // 38: serverhub.AgentService.ProxyHttpRequest:input_type -> serverhub.HttpProxyRequest
+	3,  // 39: serverhub.AgentService.Authenticate:output_type -> serverhub.AuthResponse
+	4,  // 40: serverhub.AgentService.GetSystemInfo:output_type -> serverhub.SystemInfo
+	11, // 41: serverhub.AgentService.GetMetrics:output_type -> serverhub.Metrics
+	15, // 42: serverhub.AgentService.ExecuteCommand:output_type -> serverhub.CommandResponse
+	19, // 43: serverhub.AgentService.ExecuteShell:output_type -> serverhub.ShellOutput
+	21, // 44: serverhub.AgentService.ReadFile:output_type -> serverhub.FileContent
+	40, // 45: serverhub.AgentService.WriteFile:output_type -> serverhub.ActionResponse
+	29, // 46: serverhub.AgentService.ListDirectory:output_type -> serverhub.DirContent
+	40, // 47: serverhub.AgentService.DeleteFile:output_type -> serverhub.ActionResponse
+	27, // 48: serverhub.AgentService.UploadFile:output_type -> serverhub.UploadResponse
+	24, // 49: serverhub.AgentService.DownloadFile:output_type -> serverhub.FileChunk
+	31, // 50: serverhub.AgentService.TailLog:output_type -> serverhub.LogLine
+	33, // 51: serverhub.AgentService.ListServices:output_type -> serverhub.ServiceList
+	40, // 52: serverhub.AgentService.ServiceAction:output_type -> serverhub.ActionResponse
+	37, // 53: serverhub.AgentService.ListProcesses:output_type -> serverhub.ProcessList
+	40, // 54: serverhub.AgentService.KillProcess:output_type -> serverhub.ActionResponse
+	42, // 55: serverhub.AgentService.SearchDockerHub:output_type -> serverhub.DockerSearchResponse
+	45, // 56: serverhub.AgentService.ProxyHttpRequest:output_type -> serverhub.HttpProxyResponse
+	39, // [39:57] is the sub-list for method output_type
+	21, // [21:39] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_proto_agent_proto_init() }
@@ -3279,7 +3710,7 @@ func file_proto_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_agent_proto_rawDesc), len(file_proto_agent_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   42,
+			NumMessages:   49,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -349,77 +349,195 @@ async function loadData() {
   if (!selectedServer.value) return
   loading.value = true
   try {
-    // 模拟加载数据
-    await new Promise(r => setTimeout(r, 500))
-
-    sshKeys.value = [
-      {
-        name: 'id_rsa',
-        type: 'RSA',
-        bits: 4096,
-        fingerprint: 'SHA256:nThbg6kXUpJWGl7E1IGOCspRomTxdCARLviKw6E5SY8',
-        publicKey: 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQ...',
-        created: '2024-01-15T10:30:00Z'
-      },
-      {
-        name: 'id_ed25519',
-        type: 'ED25519',
-        bits: 256,
-        fingerprint: 'SHA256:uNiVztksCsDhcc0u9e8BujQXVUpKZIDTMczCvj3tD2s',
-        publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI...',
-        created: '2024-03-20T14:00:00Z'
-      }
-    ]
-
-    authorizedKeys.value = [
-      {
-        id: '1',
-        type: 'ssh-rsa',
-        key: 'AAAAB3NzaC1yc2EAAAADAQABAAACAQDJxLFKKLMJzYqvkNNXBCBsxswxkXVRNRIMqAo...',
-        comment: 'admin@workstation'
-      },
-      {
-        id: '2',
-        type: 'ssh-ed25519',
-        key: 'AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl',
-        comment: 'deploy@ci-server'
-      }
-    ]
-
-    knownHosts.value = [
-      { id: '1', host: 'github.com', type: 'ssh-ed25519', fingerprint: 'SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU' },
-      { id: '2', host: 'gitlab.com', type: 'ssh-ed25519', fingerprint: 'SHA256:HbW3g8zUjNSksFbqTiUWPWg2Bq1x8xdGUrliXFzSnUw' },
-      { id: '3', host: '192.168.1.100', type: 'ssh-rsa', fingerprint: 'SHA256:nThbg6kXUpJWGl7E1IGOCspRomTxdCARLviKw6E5SY8' }
-    ]
-
-    sshConfig.value = `# SSH 配置文件
-Host github.com
-  HostName github.com
-  User git
-  IdentityFile ~/.ssh/id_ed25519
-  IdentitiesOnly yes
-
-Host myserver
-  HostName 192.168.1.100
-  User root
-  Port 22
-  IdentityFile ~/.ssh/id_rsa
-`
+    // 加载 SSH 密钥对
+    await loadSSHKeys()
+    // 加载授权密钥
+    await loadAuthorizedKeys()
+    // 加载已知主机
+    await loadKnownHosts()
+    // 加载 SSH 配置
+    await loadSshConfigFile()
+  } catch (error) {
+    console.error('加载 SSH 数据失败:', error)
+    ElMessage.error('加载 SSH 数据失败')
   } finally {
     loading.value = false
   }
 }
 
-function loadSshConfig() {
-  loadData()
+async function loadSSHKeys() {
+  try {
+    // 列出 ~/.ssh/ 目录下的密钥文件
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'bash',
+      ['-c', 'ls -la ~/.ssh/*.pub 2>/dev/null || echo ""']
+    )
+    
+    const keys: SSHKey[] = []
+    const lines = (result.stdout || '').split('\n').filter((l: string) => l.includes('.pub'))
+    
+    for (const line of lines) {
+      const match = line.match(/(\S+\.pub)$/)
+      if (match) {
+        const pubFile = match[1]
+        const name = pubFile.replace(/\.pub$/, '').split('/').pop() || ''
+        
+        // 获取公钥内容和指纹
+        const keyResult = await window.electronAPI.server.executeCommand(
+          selectedServer.value,
+          'bash',
+          ['-c', `cat ~/.ssh/${name}.pub 2>/dev/null`]
+        )
+        const publicKey = (keyResult.stdout || '').trim()
+        
+        // 获取指纹
+        const fpResult = await window.electronAPI.server.executeCommand(
+          selectedServer.value,
+          'bash',
+          ['-c', `ssh-keygen -lf ~/.ssh/${name}.pub 2>/dev/null`]
+        )
+        const fpLine = (fpResult.stdout || '').trim()
+        const fpMatch = fpLine.match(/(\d+)\s+(SHA256:\S+)\s+.*\((\w+)\)/)
+        
+        // 获取文件创建时间
+        const statResult = await window.electronAPI.server.executeCommand(
+          selectedServer.value,
+          'bash',
+          ['-c', `stat -c %Y ~/.ssh/${name}.pub 2>/dev/null || stat -f %m ~/.ssh/${name}.pub 2>/dev/null`]
+        )
+        const timestamp = parseInt((statResult.stdout || '').trim()) || Date.now() / 1000
+        
+        keys.push({
+          name,
+          type: fpMatch ? fpMatch[3] : publicKey.split(' ')[0]?.replace('ssh-', '').toUpperCase() || 'UNKNOWN',
+          bits: fpMatch ? parseInt(fpMatch[1]) : 0,
+          fingerprint: fpMatch ? fpMatch[2] : '',
+          publicKey,
+          created: new Date(timestamp * 1000).toISOString()
+        })
+      }
+    }
+    
+    sshKeys.value = keys
+  } catch (error) {
+    console.error('加载 SSH 密钥失败:', error)
+    sshKeys.value = []
+  }
+}
+
+async function loadAuthorizedKeys() {
+  try {
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'bash',
+      ['-c', 'cat ~/.ssh/authorized_keys 2>/dev/null || echo ""']
+    )
+    
+    const keys: AuthorizedKey[] = []
+    const lines = (result.stdout || '').split('\n').filter((l: string) => l.trim() && !l.startsWith('#'))
+    
+    lines.forEach((line: string, index: number) => {
+      const parts = line.trim().split(/\s+/)
+      if (parts.length >= 2) {
+        keys.push({
+          id: `auth_${index}`,
+          type: parts[0],
+          key: parts[1],
+          comment: parts.slice(2).join(' ') || ''
+        })
+      }
+    })
+    
+    authorizedKeys.value = keys
+  } catch (error) {
+    console.error('加载授权密钥失败:', error)
+    authorizedKeys.value = []
+  }
+}
+
+async function loadKnownHosts() {
+  try {
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'bash',
+      ['-c', 'cat ~/.ssh/known_hosts 2>/dev/null || echo ""']
+    )
+    
+    const hosts: KnownHost[] = []
+    const lines = (result.stdout || '').split('\n').filter((l: string) => l.trim() && !l.startsWith('#'))
+    
+    lines.forEach((line: string, index: number) => {
+      const parts = line.trim().split(/\s+/)
+      if (parts.length >= 3) {
+        // 计算指纹
+        const keyData = parts[2]
+        hosts.push({
+          id: `known_${index}`,
+          host: parts[0].replace(/,.*$/, ''), // 移除端口等额外信息
+          type: parts[1],
+          fingerprint: `SHA256:${keyData.substring(0, 43)}...` // 简化显示
+        })
+      }
+    })
+    
+    knownHosts.value = hosts
+  } catch (error) {
+    console.error('加载已知主机失败:', error)
+    knownHosts.value = []
+  }
+}
+
+async function loadSshConfigFile() {
+  try {
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'bash',
+      ['-c', 'cat ~/.ssh/config 2>/dev/null || echo ""']
+    )
+    sshConfig.value = result.stdout || ''
+  } catch (error) {
+    console.error('加载 SSH 配置失败:', error)
+    sshConfig.value = ''
+  }
+}
+
+async function loadSshConfig() {
+  if (!selectedServer.value) return
+  loading.value = true
+  try {
+    await loadSshConfigFile()
+    ElMessage.success('SSH 配置已重新加载')
+  } catch (error) {
+    ElMessage.error('加载 SSH 配置失败')
+  } finally {
+    loading.value = false
+  }
 }
 
 async function saveSshConfig() {
   if (!selectedServer.value) return
   saving.value = true
   try {
-    await new Promise(r => setTimeout(r, 500))
+    // 确保 ~/.ssh 目录存在
+    await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'bash',
+      ['-c', 'mkdir -p ~/.ssh && chmod 700 ~/.ssh']
+    )
+    
+    // 写入配置文件
+    const escapedConfig = sshConfig.value.replace(/'/g, "'\\''")
+    await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'bash',
+      ['-c', `echo '${escapedConfig}' > ~/.ssh/config && chmod 600 ~/.ssh/config`]
+    )
+    
     ElMessage.success('SSH 配置已保存')
+  } catch (error) {
+    console.error('保存 SSH 配置失败:', error)
+    ElMessage.error('保存 SSH 配置失败')
   } finally {
     saving.value = false
   }
@@ -441,20 +559,55 @@ async function generateKey() {
     ElMessage.warning('请输入密钥名称')
     return
   }
+  if (!selectedServer.value) return
+  
   saving.value = true
   try {
-    await new Promise(r => setTimeout(r, 1000))
-    const newKey: SSHKey = {
-      name: generateForm.value.name,
-      type: generateForm.value.type.toUpperCase(),
-      bits: generateForm.value.type === 'ed25519' ? 256 : generateForm.value.bits,
-      fingerprint: 'SHA256:' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
-      publicKey: `ssh-${generateForm.value.type} AAAA...`,
-      created: new Date().toISOString()
+    // 确保 ~/.ssh 目录存在
+    await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'bash',
+      ['-c', 'mkdir -p ~/.ssh && chmod 700 ~/.ssh']
+    )
+    
+    // 构建 ssh-keygen 命令
+    const keyPath = `~/.ssh/${generateForm.value.name}`
+    const keyType = generateForm.value.type
+    const comment = generateForm.value.comment || `${generateForm.value.name}@serverhub`
+    const passphrase = generateForm.value.passphrase || ''
+    
+    let cmd = `ssh-keygen -t ${keyType}`
+    if (keyType === 'rsa') {
+      cmd += ` -b ${generateForm.value.bits}`
     }
-    sshKeys.value.push(newKey)
+    cmd += ` -f ${keyPath} -C "${comment}" -N "${passphrase}"`
+    
+    // 如果文件已存在，先删除
+    await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'bash',
+      ['-c', `rm -f ${keyPath} ${keyPath}.pub 2>/dev/null || true`]
+    )
+    
+    // 生成密钥
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'bash',
+      ['-c', cmd]
+    )
+    
+    if (result.exit_code !== 0) {
+      throw new Error(result.stderr || '密钥生成失败')
+    }
+    
     generateDialogVisible.value = false
     ElMessage.success('SSH 密钥已生成')
+    
+    // 重新加载密钥列表
+    await loadSSHKeys()
+  } catch (error: any) {
+    console.error('生成密钥失败:', error)
+    ElMessage.error(error.message || '生成密钥失败')
   } finally {
     saving.value = false
   }
@@ -477,8 +630,24 @@ function copyViewingKey() {
 
 async function deleteKey(key: SSHKey) {
   await ElMessageBox.confirm(`确定删除密钥 "${key.name}" 吗？此操作不可恢复。`, '确认删除', { type: 'warning' })
-  sshKeys.value = sshKeys.value.filter(k => k.name !== key.name)
-  ElMessage.success('密钥已删除')
+  
+  if (!selectedServer.value) return
+  
+  try {
+    // 删除私钥和公钥文件
+    await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'bash',
+      ['-c', `rm -f ~/.ssh/${key.name} ~/.ssh/${key.name}.pub`]
+    )
+    
+    // 重新加载密钥列表
+    await loadSSHKeys()
+    ElMessage.success('密钥已删除')
+  } catch (error) {
+    console.error('删除密钥失败:', error)
+    ElMessage.error('删除密钥失败')
+  }
 }
 
 function showAddAuthorizedDialog() {
@@ -491,18 +660,33 @@ async function addAuthorizedKey() {
     ElMessage.warning('请输入公钥内容')
     return
   }
+  if (!selectedServer.value) return
+  
   saving.value = true
   try {
-    await new Promise(r => setTimeout(r, 500))
-    const parts = authorizedForm.value.key.trim().split(' ')
-    authorizedKeys.value.push({
-      id: Date.now().toString(),
-      type: parts[0] || 'ssh-rsa',
-      key: parts[1] || authorizedForm.value.key,
-      comment: parts[2] || ''
-    })
+    // 确保 ~/.ssh 目录和 authorized_keys 文件存在
+    await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'bash',
+      ['-c', 'mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys']
+    )
+    
+    // 追加公钥到 authorized_keys
+    const escapedKey = authorizedForm.value.key.trim().replace(/'/g, "'\\''")
+    await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'bash',
+      ['-c', `echo '${escapedKey}' >> ~/.ssh/authorized_keys`]
+    )
+    
     addAuthorizedDialogVisible.value = false
     ElMessage.success('授权密钥已添加')
+    
+    // 重新加载授权密钥列表
+    await loadAuthorizedKeys()
+  } catch (error) {
+    console.error('添加授权密钥失败:', error)
+    ElMessage.error('添加授权密钥失败')
   } finally {
     saving.value = false
   }
@@ -515,8 +699,27 @@ function viewFullKey(key: AuthorizedKey) {
 
 async function removeAuthorizedKey(key: AuthorizedKey) {
   await ElMessageBox.confirm('确定移除此授权密钥吗？', '确认移除')
-  authorizedKeys.value = authorizedKeys.value.filter(k => k.id !== key.id)
-  ElMessage.success('授权密钥已移除')
+  
+  if (!selectedServer.value) return
+  
+  try {
+    // 构建要删除的密钥模式（使用密钥的前50个字符作为匹配）
+    const keyPattern = key.key.substring(0, 50).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    
+    // 使用 sed 删除包含该密钥的行
+    await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'bash',
+      ['-c', `sed -i '/${keyPattern}/d' ~/.ssh/authorized_keys`]
+    )
+    
+    // 重新加载授权密钥列表
+    await loadAuthorizedKeys()
+    ElMessage.success('授权密钥已移除')
+  } catch (error) {
+    console.error('移除授权密钥失败:', error)
+    ElMessage.error('移除授权密钥失败')
+  }
 }
 
 function showAddKnownHostDialog() {
@@ -529,17 +732,46 @@ async function addKnownHost() {
     ElMessage.warning('请输入主机地址')
     return
   }
+  if (!selectedServer.value) return
+  
   saving.value = true
   try {
-    await new Promise(r => setTimeout(r, 1000))
-    knownHosts.value.push({
-      id: Date.now().toString(),
-      host: knownHostForm.value.host,
-      type: 'ssh-ed25519',
-      fingerprint: 'SHA256:' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
-    })
+    // 确保 ~/.ssh 目录存在
+    await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'bash',
+      ['-c', 'mkdir -p ~/.ssh && chmod 700 ~/.ssh']
+    )
+    
+    // 使用 ssh-keyscan 扫描主机公钥
+    const port = knownHostForm.value.port !== 22 ? `-p ${knownHostForm.value.port}` : ''
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'bash',
+      ['-c', `ssh-keyscan ${port} ${knownHostForm.value.host} 2>/dev/null`],
+      { timeout: 30 }
+    )
+    
+    if (!result.stdout || result.stdout.trim() === '') {
+      throw new Error('无法获取主机公钥，请检查主机地址和端口')
+    }
+    
+    // 追加到 known_hosts
+    const escapedKeys = result.stdout.trim().replace(/'/g, "'\\''")
+    await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'bash',
+      ['-c', `echo '${escapedKeys}' >> ~/.ssh/known_hosts`]
+    )
+    
     addKnownHostDialogVisible.value = false
     ElMessage.success('已知主机已添加')
+    
+    // 重新加载已知主机列表
+    await loadKnownHosts()
+  } catch (error: any) {
+    console.error('添加已知主机失败:', error)
+    ElMessage.error(error.message || '添加已知主机失败')
   } finally {
     saving.value = false
   }
@@ -547,8 +779,24 @@ async function addKnownHost() {
 
 async function removeKnownHost(host: KnownHost) {
   await ElMessageBox.confirm(`确定移除主机 "${host.host}" 吗？`, '确认移除')
-  knownHosts.value = knownHosts.value.filter(h => h.id !== host.id)
-  ElMessage.success('已知主机已移除')
+  
+  if (!selectedServer.value) return
+  
+  try {
+    // 使用 ssh-keygen 移除已知主机
+    await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'bash',
+      ['-c', `ssh-keygen -R ${host.host} 2>/dev/null || sed -i '/${host.host.replace(/\./g, '\\.')}/d' ~/.ssh/known_hosts`]
+    )
+    
+    // 重新加载已知主机列表
+    await loadKnownHosts()
+    ElMessage.success('已知主机已移除')
+  } catch (error) {
+    console.error('移除已知主机失败:', error)
+    ElMessage.error('移除已知主机失败')
+  }
 }
 
 function truncateKey(key: string): string {

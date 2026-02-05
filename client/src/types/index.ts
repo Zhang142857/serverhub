@@ -400,6 +400,7 @@ export interface ElectronAPI {
     list: (serverId: string, path: string) => Promise<DirContent>
     read: (serverId: string, path: string) => Promise<FileContent>
     write: (serverId: string, path: string, content: string) => Promise<FileWriteResult>
+    delete: (serverId: string, path: string) => Promise<{ success: boolean; message?: string; error?: string }>
     uploadStream: (serverId: string, data: Buffer | Uint8Array, remotePath: string, options?: {
       mode?: number
       createDirs?: boolean
@@ -442,6 +443,9 @@ export interface ElectronAPI {
     onError: (path: string, callback: (error: string) => void) => () => void
     onEnd: (path: string, callback: () => void) => () => void
   }
+  proxy: {
+    test: (config: { type: string; host: string; port: number; username?: string; password?: string }) => Promise<{ success: boolean; message: string }>
+  }
   secure: {
     isAvailable: () => Promise<boolean>
     setCredential: (key: string, value: string) => Promise<{ success: boolean; error?: string }>
@@ -450,6 +454,22 @@ export interface ElectronAPI {
     hasCredential: (key: string) => Promise<boolean>
     listKeys: () => Promise<string[]>
     clearAll: () => Promise<{ success: boolean; error?: string }>
+  }
+  http: {
+    request: (options: {
+      url: string
+      method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+      headers?: Record<string, string>
+      body?: string | object
+      timeout?: number
+    }) => Promise<{
+      success: boolean
+      status: number
+      statusText: string
+      data: any
+      headers?: Record<string, string>
+      error?: string
+    }>
   }
 }
 

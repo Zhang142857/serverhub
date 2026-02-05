@@ -130,8 +130,8 @@
         <!-- 磁盘卡片 -->
         <el-card class="info-card disk-card">
           <template #header>磁盘</template>
-          <div class="disk-list" v-if="systemInfo.disks?.length">
-            <div v-for="disk in systemInfo.disks" :key="disk.mountpoint" class="disk-item">
+          <div class="disk-list" v-if="filteredDisks.length">
+            <div v-for="disk in filteredDisks" :key="disk.mountpoint" class="disk-item">
               <div class="disk-header">
                 <span class="disk-mount">{{ disk.mountpoint }}</span>
                 <span class="disk-usage">{{ (disk.used_percent || disk.usedPercent || 0).toFixed(1) }}%</span>
@@ -191,6 +191,22 @@ const serverStore = useServerStore()
 
 const serverId = route.params.id as string
 const server = computed(() => serverStore.servers.find(s => s.id === serverId))
+
+// 过滤掉 snap 分区和其他不重要的分区
+const filteredDisks = computed(() => {
+  if (!systemInfo.value.disks?.length) return []
+  return systemInfo.value.disks.filter((disk: any) => {
+    const mount = disk.mountpoint || ''
+    // 过滤掉 snap 分区、tmpfs、devtmpfs 等
+    if (mount.startsWith('/snap/')) return false
+    if (mount.startsWith('/run/')) return false
+    if (mount.startsWith('/sys/')) return false
+    if (mount.startsWith('/dev/')) return false
+    // 过滤掉太小的分区（小于 100MB）
+    if (disk.total && disk.total < 100 * 1024 * 1024) return false
+    return true
+  })
+})
 
 const loading = ref(true)
 const refreshing = ref(false)
@@ -351,6 +367,7 @@ function getProgressColor(percentage: number): string {
   padding: 20px;
   background: var(--bg-color);
   min-height: 100vh;
+  color: var(--text-color);
 }
 
 .page-header {
@@ -364,7 +381,7 @@ function getProgressColor(percentage: number): string {
     align-items: center;
     gap: 12px;
 
-    h1 { font-size: 24px; font-weight: 600; }
+    h1 { font-size: 24px; font-weight: 600; color: var(--text-color); }
   }
 
   .header-actions {
@@ -391,6 +408,22 @@ function getProgressColor(percentage: number): string {
 }
 
 .info-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+
+  :deep(.el-card__header) {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-color);
+    font-weight: 600;
+    padding: 12px 16px;
+  }
+
+  :deep(.el-card__body) {
+    background: var(--bg-secondary);
+    padding: 16px;
+  }
+
   .info-list {
     display: flex;
     flex-direction: column;
@@ -402,7 +435,7 @@ function getProgressColor(percentage: number): string {
     justify-content: space-between;
 
     .label { color: var(--text-secondary); }
-    .value { font-family: monospace; font-size: 13px; }
+    .value { font-family: monospace; font-size: 13px; color: var(--text-color); }
   }
 }
 
@@ -436,8 +469,8 @@ function getProgressColor(percentage: number): string {
       justify-content: space-between;
       margin-bottom: 8px;
 
-      .disk-mount { font-family: monospace; }
-      .disk-usage { font-weight: 500; }
+      .disk-mount { font-family: monospace; color: var(--text-color); }
+      .disk-usage { font-weight: 500; color: var(--text-color); }
     }
 
     .disk-size {
@@ -465,6 +498,7 @@ function getProgressColor(percentage: number): string {
       display: flex;
       align-items: center;
       gap: 8px;
+      color: var(--text-color);
 
       .arrow {
         font-size: 16px;
@@ -478,6 +512,7 @@ function getProgressColor(percentage: number): string {
       font-family: monospace;
       font-size: 18px;
       font-weight: 600;
+      color: var(--text-color);
     }
   }
 }
@@ -492,6 +527,21 @@ function getProgressColor(percentage: number): string {
 
 .quick-actions {
   margin-bottom: 24px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+
+  :deep(.el-card__header) {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-color);
+    font-weight: 600;
+    padding: 12px 16px;
+  }
+
+  :deep(.el-card__body) {
+    background: var(--bg-secondary);
+    padding: 16px;
+  }
 
   .action-grid {
     display: flex;
@@ -501,6 +551,21 @@ function getProgressColor(percentage: number): string {
 }
 
 .command-output {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+
+  :deep(.el-card__header) {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-color);
+    padding: 12px 16px;
+  }
+
+  :deep(.el-card__body) {
+    background: var(--bg-secondary);
+    padding: 16px;
+  }
+
   .output-header {
     display: flex;
     justify-content: space-between;
@@ -508,7 +573,7 @@ function getProgressColor(percentage: number): string {
   }
 
   .output-content {
-    background-color: var(--bg-color);
+    background-color: var(--bg-tertiary);
     padding: 16px;
     border-radius: 8px;
     font-family: 'Fira Code', monospace;
@@ -518,6 +583,7 @@ function getProgressColor(percentage: number): string {
     white-space: pre-wrap;
     max-height: 400px;
     overflow-y: auto;
+    color: var(--text-color);
   }
 }
 </style>

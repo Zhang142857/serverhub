@@ -298,51 +298,30 @@ onUnmounted(() => {
   if (refreshInterval) clearInterval(refreshInterval)
 })
 
-// 模拟服务数据
-function generateSimulatedServices(): ServiceInfo[] {
-  const serviceTemplates = [
-    { name: 'nginx', description: 'A high performance web server and reverse proxy', type: 'web', enabled: true, status: 'running' },
-    { name: 'mysql', description: 'MySQL Community Server', type: 'database', enabled: true, status: 'running' },
-    { name: 'redis-server', description: 'Advanced key-value store', type: 'database', enabled: true, status: 'running' },
-    { name: 'docker', description: 'Docker Application Container Engine', type: 'container', enabled: true, status: 'running' },
-    { name: 'sshd', description: 'OpenSSH server daemon', type: 'system', enabled: true, status: 'running' },
-    { name: 'cron', description: 'Regular background program processing daemon', type: 'system', enabled: true, status: 'running' },
-    { name: 'postgresql', description: 'PostgreSQL RDBMS', type: 'database', enabled: false, status: 'stopped' },
-    { name: 'mongodb', description: 'MongoDB Database Server', type: 'database', enabled: false, status: 'stopped' },
-    { name: 'apache2', description: 'Apache HTTP Server', type: 'web', enabled: false, status: 'stopped' },
-    { name: 'php-fpm', description: 'PHP FastCGI Process Manager', type: 'web', enabled: true, status: 'running' },
-    { name: 'fail2ban', description: 'Daemon to ban hosts that cause multiple authentication errors', type: 'security', enabled: true, status: 'running' },
-    { name: 'ufw', description: 'Uncomplicated Firewall', type: 'security', enabled: true, status: 'running' },
-    { name: 'rsyslog', description: 'System Logging Service', type: 'system', enabled: true, status: 'running' },
-    { name: 'systemd-resolved', description: 'Network Name Resolution', type: 'system', enabled: true, status: 'running' },
-    { name: 'NetworkManager', description: 'Network Manager', type: 'system', enabled: true, status: 'running' },
-    { name: 'elasticsearch', description: 'Elasticsearch distributed search engine', type: 'database', enabled: false, status: 'failed' },
-    { name: 'rabbitmq-server', description: 'RabbitMQ Messaging Server', type: 'messaging', enabled: false, status: 'stopped' },
-    { name: 'memcached', description: 'High-performance memory object caching system', type: 'database', enabled: true, status: 'running' },
-  ]
 
-  return serviceTemplates.map((template, idx) => ({
-    name: template.name,
-    description: template.description,
-    type: template.type,
-    enabled: template.enabled,
-    status: template.status,
-    pid: template.status === 'running' ? 1000 + idx * 100 + Math.floor(Math.random() * 50) : 0,
-    uptime: template.status === 'running' ? Math.floor(Math.random() * 86400 * 30) : 0,
-    memory: template.status === 'running' ? Math.floor(Math.random() * 500) + 50 : 0,
-    cpu: template.status === 'running' ? Math.random() * 5 : 0,
-    loading: false,
-    selected: false
-  }))
-}
 
 async function loadServices() {
   if (!selectedServer.value) return
   loading.value = true
   try {
-    // 使用模拟数据
-    await new Promise(resolve => setTimeout(resolve, 300))
-    services.value = generateSimulatedServices()
+    const result = await window.electronAPI.service.list(selectedServer.value)
+    // ServiceListResponse 直接返回 services 数组，没有 success 字段
+    if (result && result.services) {
+      services.value = result.services.map(s => ({
+        ...s,
+        loading: false,
+        selected: false
+      }))
+    } else if (result && Array.isArray(result)) {
+      // 兼容直接返回数组的情况
+      services.value = result.map(s => ({
+        ...s,
+        loading: false,
+        selected: false
+      }))
+    } else {
+      ElMessage.error(`加载服务列表失败: ${(result as any)?.error || '返回数据格式错误'}`)
+    }
   } catch (error) {
     ElMessage.error(`加载服务列表失败: ${(error as Error).message}`)
   } finally {
@@ -365,10 +344,17 @@ async function serviceAction(name: string, action: string) {
   }
 
   try {
-    // 模拟操作
-    await new Promise(resolve => setTimeout(resolve, 800))
-    ElMessage.success(`${actionNames[action] || action} ${name} 成功`)
-    await loadServices()
+    const result = await window.electronAPI.service.action(
+      selectedServer.value,
+      name,
+      action as 'start' | 'stop' | 'restart' | 'enable' | 'disable'
+    )
+    if (result.success) {
+      ElMessage.success(`${actionNames[action] || action} ${name} 成功`)
+      await loadServices()
+    } else {
+      ElMessage.error(`操作失败: ${result.error || '未知错误'}`)
+    }
   } catch (error) {
     ElMessage.error(`操作失败: ${(error as Error).message}`)
   } finally {
@@ -378,7 +364,7 @@ async function serviceAction(name: string, action: string) {
 
 // 批量操作
 async function batchAction(action: string) {
-  if (selectedServices.value.length === 0) return
+  if (selectedServices.value.length === 0 || !selectedServer.value) return
 
   loading.value = true
   const actionNames: Record<string, string> = {
@@ -387,9 +373,32 @@ async function batchAction(action: string) {
     restart: '重启'
   }
 
+  let successCount = 0
+  let failCount = 0
+
   try {
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    ElMessage.success(`已${actionNames[action]} ${selectedServices.value.length} 个服务`)
+    for (const serviceName of selectedServices.value) {
+      try {
+        const result = await window.electronAPI.service.action(
+          selectedServer.value,
+          serviceName,
+          action as 'start' | 'stop' | 'restart'
+        )
+        if (result.success) {
+          successCount++
+        } else {
+          failCount++
+        }
+      } catch {
+        failCount++
+      }
+    }
+
+    if (failCount === 0) {
+      ElMessage.success(`已${actionNames[action]} ${successCount} 个服务`)
+    } else {
+      ElMessage.warning(`${actionNames[action]}完成: 成功 ${successCount} 个, 失败 ${failCount} 个`)
+    }
     selectedServices.value = []
     await loadServices()
   } catch (error) {
@@ -407,30 +416,28 @@ function viewServiceDetail(service: ServiceInfo) {
 
 // 查看服务日志
 async function viewServiceLogs(service: ServiceInfo) {
+  if (!selectedServer.value) return
+  
   currentService.value = service
   serviceLogs.value = []
   showLogDialog.value = true
 
-  // 模拟日志数据
-  await new Promise(resolve => setTimeout(resolve, 500))
-  const now = new Date()
-  const logTemplates = [
-    `Starting ${service.name} service...`,
-    `Loading configuration from /etc/${service.name}/${service.name}.conf`,
-    `Binding to port ${1000 + Math.floor(Math.random() * 9000)}`,
-    `Service ${service.name} started successfully`,
-    `Accepting connections...`,
-    `Connection from 192.168.1.${Math.floor(Math.random() * 255)}`,
-    `Processing request...`,
-    `Request completed in ${Math.floor(Math.random() * 100)}ms`,
-    `Health check passed`,
-    `Memory usage: ${Math.floor(Math.random() * 500)}MB`
-  ]
-
-  serviceLogs.value = logTemplates.map((log, idx) => {
-    const time = new Date(now.getTime() - (logTemplates.length - idx) * 60000)
-    return `[${time.toISOString()}] ${log}`
-  })
+  try {
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'journalctl',
+      ['-u', service.name, '-n', '100', '--no-pager']
+    )
+    if (result.stdout) {
+      serviceLogs.value = result.stdout.split('\n').filter(line => line.trim())
+    } else if (result.stderr) {
+      serviceLogs.value = [`获取日志失败: ${result.stderr}`]
+    } else {
+      serviceLogs.value = ['暂无日志']
+    }
+  } catch (error) {
+    serviceLogs.value = [`获取日志失败: ${(error as Error).message}`]
+  }
 }
 
 // 选择/取消选择服务

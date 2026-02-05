@@ -1106,7 +1106,7 @@ const imageHistory = ref<Array<{
 }>>([])
 const currentImage = ref<Image | null>(null)
 
-// 模拟数据更新定时器
+// 容器资源监控定时器
 let metricsInterval: ReturnType<typeof setInterval> | null = null
 
 const connectedServers = computed(() => serverStore.connectedServers)
@@ -1239,6 +1239,7 @@ function handleSelectionChange(selection: Container[]) {
 // 批量操作
 async function batchAction(action: string) {
   if (selectedContainers.value.length === 0) return
+  if (!selectedServer.value) return
 
   const actionNames: Record<string, string> = {
     start: '启动',
@@ -1260,37 +1261,59 @@ async function batchAction(action: string) {
   }
 
   loading.value = true
+  let successCount = 0
+  let failCount = 0
+  
   try {
-    await new Promise(resolve => setTimeout(resolve, 800))
-
     for (const containerId of selectedContainers.value) {
-      const container = containers.value.find(c => c.id === containerId)
-      if (container) {
-        switch (action) {
-          case 'start':
-            container.state = 'running'
-            container.status = 'Up 1 second'
-            container.cpu = 5
-            container.memory = 100000000
-            break
-          case 'stop':
-            container.state = 'exited'
-            container.status = 'Exited (0) just now'
-            container.cpu = undefined
-            container.memory = undefined
-            break
-          case 'restart':
-            container.status = 'Up 1 second'
-            break
-          case 'delete':
-            containers.value = containers.value.filter(c => c.id !== containerId)
-            break
+      try {
+        if (action === 'delete') {
+          // 先停止再删除
+          const container = containers.value.find(c => c.id === containerId)
+          if (container?.state === 'running') {
+            await window.electronAPI.server.executeCommand(
+              selectedServer.value!,
+              'docker',
+              ['stop', containerId]
+            )
+          }
+          const result = await window.electronAPI.server.executeCommand(
+            selectedServer.value!,
+            'docker',
+            ['rm', containerId]
+          )
+          if (result.exit_code === 0) {
+            successCount++
+          } else {
+            failCount++
+          }
+        } else {
+          const result = await window.electronAPI.server.executeCommand(
+            selectedServer.value!,
+            'docker',
+            [action, containerId]
+          )
+          if (result.exit_code === 0) {
+            successCount++
+          } else {
+            failCount++
+          }
         }
+      } catch {
+        failCount++
       }
     }
 
-    ElMessage.success(`已${actionNames[action]} ${selectedContainers.value.length} 个容器`)
+    if (failCount === 0) {
+      ElMessage.success(`已${actionNames[action]} ${successCount} 个容器`)
+    } else {
+      ElMessage.warning(`${actionNames[action]}完成: 成功 ${successCount} 个, 失败 ${failCount} 个`)
+    }
+    
     selectedContainers.value = []
+    
+    // 刷新容器列表
+    await refreshContainers()
   } catch (error) {
     ElMessage.error(`批量操作失败: ${(error as Error).message}`)
   } finally {
@@ -1298,143 +1321,174 @@ async function batchAction(action: string) {
   }
 }
 
-// 初始化模拟容器数据
-function initSimulatedData() {
-  containers.value = [
-    {
-      id: 'a1b2c3d4e5f6',
-      name: 'nginx-proxy',
-      image: 'nginx:latest',
-      state: 'running',
-      status: 'Up 5 days',
-      ports: [{ hostPort: '80', containerPort: '80' }, { hostPort: '443', containerPort: '443' }],
-      cpu: 2.5,
-      memory: 134217728,
-      created: '2024-01-15 10:30:00',
-      startedAt: '2024-01-20 08:00:00',
-      networkMode: 'bridge',
-      restartPolicy: 'always',
-      env: ['NGINX_HOST=localhost', 'NGINX_PORT=80'],
-      mounts: [{ source: '/etc/nginx/conf.d', destination: '/etc/nginx/conf.d' }]
-    },
-    {
-      id: 'b2c3d4e5f6a7',
-      name: 'mysql-db',
-      image: 'mysql:8.0',
-      state: 'running',
-      status: 'Up 5 days',
-      ports: [{ hostPort: '3306', containerPort: '3306' }],
-      cpu: 8.3,
-      memory: 536870912,
-      created: '2024-01-15 10:35:00',
-      startedAt: '2024-01-20 08:00:00',
-      networkMode: 'bridge',
-      restartPolicy: 'always',
-      env: ['MYSQL_ROOT_PASSWORD=***', 'MYSQL_DATABASE=app'],
-      mounts: [{ source: '/var/lib/mysql', destination: '/var/lib/mysql' }]
-    },
-    {
-      id: 'c3d4e5f6a7b8',
-      name: 'redis-cache',
-      image: 'redis:7-alpine',
-      state: 'running',
-      status: 'Up 5 days',
-      ports: [{ hostPort: '6379', containerPort: '6379' }],
-      cpu: 0.8,
-      memory: 67108864,
-      created: '2024-01-15 10:40:00',
-      startedAt: '2024-01-20 08:00:00',
-      networkMode: 'bridge',
-      restartPolicy: 'always',
-      env: [],
-      mounts: []
-    },
-    {
-      id: 'd4e5f6a7b8c9',
-      name: 'app-backend',
-      image: 'node:18-alpine',
-      state: 'running',
-      status: 'Up 3 days',
-      ports: [{ hostPort: '3000', containerPort: '3000' }],
-      cpu: 15.2,
-      memory: 268435456,
-      created: '2024-01-17 14:20:00',
-      startedAt: '2024-01-22 09:30:00',
-      networkMode: 'bridge',
-      restartPolicy: 'on-failure',
-      env: ['NODE_ENV=production', 'PORT=3000', 'DB_HOST=mysql-db'],
-      mounts: [{ source: '/app', destination: '/app' }]
-    },
-    {
-      id: 'e5f6a7b8c9d0',
-      name: 'postgres-test',
-      image: 'postgres:15',
-      state: 'exited',
-      status: 'Exited (0) 2 days ago',
-      ports: [{ hostPort: '5432', containerPort: '5432' }],
-      created: '2024-01-10 16:00:00',
-      networkMode: 'bridge',
-      restartPolicy: 'no',
-      env: ['POSTGRES_PASSWORD=***'],
-      mounts: []
-    },
-    {
-      id: 'f6a7b8c9d0e1',
-      name: 'mongodb-dev',
-      image: 'mongo:6',
-      state: 'paused',
-      status: 'Up 1 day (Paused)',
-      ports: [{ hostPort: '27017', containerPort: '27017' }],
-      cpu: 0,
-      memory: 157286400,
-      created: '2024-01-18 11:00:00',
-      startedAt: '2024-01-24 10:00:00',
-      networkMode: 'bridge',
-      restartPolicy: 'unless-stopped',
-      env: ['MONGO_INITDB_ROOT_USERNAME=admin'],
-      mounts: [{ source: '/data/db', destination: '/data/db' }]
+// 解析 docker ps 输出为容器对象
+function parseContainerOutput(output: string): Container[] {
+  const lines = output.trim().split('\n').filter(line => line.trim())
+  return lines.map(line => {
+    try {
+      const data = JSON.parse(line)
+      // docker ps --format json 输出格式
+      const ports: Port[] = []
+      if (data.Ports) {
+        // 解析端口格式如 "0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp"
+        const portMatches = data.Ports.match(/(\d+)->(\d+)/g) || []
+        portMatches.forEach((match: string) => {
+          const [hostPort, containerPort] = match.split('->')
+          ports.push({ hostPort, containerPort })
+        })
+      }
+      
+      // 解析状态
+      let state = 'unknown'
+      const status = data.Status || ''
+      if (status.toLowerCase().includes('up')) {
+        state = status.toLowerCase().includes('paused') ? 'paused' : 'running'
+      } else if (status.toLowerCase().includes('exited')) {
+        state = 'exited'
+      }
+      
+      return {
+        id: data.ID || data.Id || '',
+        name: (data.Names || data.Name || '').replace(/^\//, ''),
+        image: data.Image || '',
+        state,
+        status,
+        ports,
+        created: data.CreatedAt || data.Created || '',
+        networkMode: data.Networks || 'bridge'
+      }
+    } catch {
+      return null
     }
-  ]
-
-  images.value = [
-    { id: 'sha256:abc123', repository: 'nginx', tag: 'latest', size: 142000000, created: '2024-01-10' },
-    { id: 'sha256:def456', repository: 'mysql', tag: '8.0', size: 565000000, created: '2024-01-08' },
-    { id: 'sha256:ghi789', repository: 'redis', tag: '7-alpine', size: 32000000, created: '2024-01-12' },
-    { id: 'sha256:jkl012', repository: 'node', tag: '18-alpine', size: 178000000, created: '2024-01-15' },
-    { id: 'sha256:mno345', repository: 'postgres', tag: '15', size: 412000000, created: '2024-01-05' },
-    { id: 'sha256:pqr678', repository: 'mongo', tag: '6', size: 698000000, created: '2024-01-11' },
-    { id: 'sha256:stu901', repository: 'python', tag: '3.11-slim', size: 125000000, created: '2024-01-14' },
-    { id: 'sha256:vwx234', repository: 'golang', tag: '1.21-alpine', size: 258000000, created: '2024-01-09' }
-  ]
-
-  // 初始化网络数据
-  networks.value = [
-    { id: 'net1', name: 'bridge', driver: 'bridge', scope: 'local', subnet: '172.17.0.0/16', gateway: '172.17.0.1', containers: 4, created: '2024-01-01' },
-    { id: 'net2', name: 'host', driver: 'host', scope: 'local', subnet: '', gateway: '', containers: 0, created: '2024-01-01' },
-    { id: 'net3', name: 'none', driver: 'null', scope: 'local', subnet: '', gateway: '', containers: 0, created: '2024-01-01' },
-    { id: 'net4', name: 'app-network', driver: 'bridge', scope: 'local', subnet: '172.18.0.0/16', gateway: '172.18.0.1', containers: 3, created: '2024-01-15' },
-    { id: 'net5', name: 'db-network', driver: 'bridge', scope: 'local', subnet: '172.19.0.0/16', gateway: '172.19.0.1', containers: 2, created: '2024-01-15' }
-  ]
-
-  // 初始化卷数据
-  volumes.value = [
-    { name: 'mysql-data', driver: 'local', mountpoint: '/var/lib/docker/volumes/mysql-data/_data', created: '2024-01-15', inUse: true },
-    { name: 'redis-data', driver: 'local', mountpoint: '/var/lib/docker/volumes/redis-data/_data', created: '2024-01-15', inUse: true },
-    { name: 'nginx-config', driver: 'local', mountpoint: '/var/lib/docker/volumes/nginx-config/_data', created: '2024-01-15', inUse: true },
-    { name: 'app-logs', driver: 'local', mountpoint: '/var/lib/docker/volumes/app-logs/_data', created: '2024-01-17', inUse: true },
-    { name: 'backup-data', driver: 'local', mountpoint: '/var/lib/docker/volumes/backup-data/_data', created: '2024-01-10', inUse: false },
-    { name: 'temp-storage', driver: 'local', mountpoint: '/var/lib/docker/volumes/temp-storage/_data', created: '2024-01-20', inUse: false }
-  ]
+  }).filter((c): c is Container => c !== null)
 }
 
-// 更新容器资源使用
-function updateContainerMetrics() {
-  containers.value.forEach(container => {
-    if (container.state === 'running') {
-      container.cpu = Math.max(0.1, Math.min(100, (container.cpu || 5) + (Math.random() - 0.5) * 3))
-      container.memory = Math.max(50000000, (container.memory || 100000000) * (1 + (Math.random() - 0.5) * 0.1))
+// 解析 docker images 输出为镜像对象
+function parseImageOutput(output: string): Image[] {
+  const lines = output.trim().split('\n').filter(line => line.trim())
+  return lines.map(line => {
+    try {
+      const data = JSON.parse(line)
+      return {
+        id: data.ID || data.Id || '',
+        repository: data.Repository || '<none>',
+        tag: data.Tag || '<none>',
+        size: parseImageSizeToBytes(data.Size || '0'),
+        created: data.CreatedAt || data.CreatedSince || ''
+      }
+    } catch {
+      return null
     }
-  })
+  }).filter((img): img is Image => img !== null)
+}
+
+// 解析镜像大小字符串为字节数
+function parseImageSizeToBytes(sizeStr: string): number {
+  const match = sizeStr.match(/([\d.]+)\s*(B|KB|MB|GB|TB)/i)
+  if (!match) return 0
+  const value = parseFloat(match[1])
+  const unit = match[2].toUpperCase()
+  const multipliers: Record<string, number> = {
+    'B': 1,
+    'KB': 1024,
+    'MB': 1024 * 1024,
+    'GB': 1024 * 1024 * 1024,
+    'TB': 1024 * 1024 * 1024 * 1024
+  }
+  return value * (multipliers[unit] || 1)
+}
+
+// 解析 docker network ls 输出
+function parseNetworkOutput(output: string): Network[] {
+  const lines = output.trim().split('\n').filter(line => line.trim())
+  return lines.map(line => {
+    try {
+      const data = JSON.parse(line)
+      return {
+        id: data.ID || data.Id || '',
+        name: data.Name || '',
+        driver: data.Driver || '',
+        scope: data.Scope || 'local',
+        subnet: '',
+        gateway: '',
+        containers: 0,
+        created: data.CreatedAt || ''
+      }
+    } catch {
+      return null
+    }
+  }).filter((n): n is Network => n !== null)
+}
+
+// 解析 docker volume ls 输出
+function parseVolumeOutput(output: string): Volume[] {
+  const lines = output.trim().split('\n').filter(line => line.trim())
+  return lines.map(line => {
+    try {
+      const data = JSON.parse(line)
+      return {
+        name: data.Name || '',
+        driver: data.Driver || 'local',
+        mountpoint: data.Mountpoint || '',
+        created: data.CreatedAt || '',
+        inUse: false
+      }
+    } catch {
+      return null
+    }
+  }).filter((v): v is Volume => v !== null)
+}
+
+// 更新容器资源使用（从 docker stats 获取）
+async function updateContainerMetrics() {
+  if (!selectedServer.value) return
+  
+  const runningContainers = containers.value.filter(c => c.state === 'running')
+  if (runningContainers.length === 0) return
+  
+  try {
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['stats', '--no-stream', '--format', '{{json .}}']
+    )
+    
+    if (result.exit_code === 0 && result.stdout) {
+      const lines = result.stdout.trim().split('\n').filter(line => line.trim())
+      lines.forEach(line => {
+        try {
+          const data = JSON.parse(line)
+          const containerId = data.ID || data.Container || ''
+          const container = containers.value.find(c => 
+            c.id.startsWith(containerId) || containerId.startsWith(c.id.substring(0, 12))
+          )
+          if (container) {
+            // 解析 CPU 百分比
+            const cpuStr = data.CPUPerc || '0%'
+            container.cpu = parseFloat(cpuStr.replace('%', '')) || 0
+            
+            // 解析内存使用
+            const memStr = data.MemUsage || '0B / 0B'
+            const memMatch = memStr.match(/([\d.]+)\s*(B|KiB|MiB|GiB|KB|MB|GB)/i)
+            if (memMatch) {
+              const value = parseFloat(memMatch[1])
+              const unit = memMatch[2].toUpperCase()
+              const multipliers: Record<string, number> = {
+                'B': 1, 'KIB': 1024, 'KB': 1024,
+                'MIB': 1024 * 1024, 'MB': 1024 * 1024,
+                'GIB': 1024 * 1024 * 1024, 'GB': 1024 * 1024 * 1024
+              }
+              container.memory = value * (multipliers[unit] || 1)
+            }
+          }
+        } catch {
+          // 忽略解析错误
+        }
+      })
+    }
+  } catch {
+    // 静默失败，不影响用户体验
+  }
 }
 
 watch(selectedServer, (newVal) => {
@@ -1468,9 +1522,33 @@ async function refreshContainers() {
 
   loading.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 500))
-    initSimulatedData()
+    // 获取容器列表
+    const containerResult = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['ps', '-a', '--format', '{{json .}}']
+    )
+    
+    if (containerResult.exit_code === 0 && containerResult.stdout) {
+      containers.value = parseContainerOutput(containerResult.stdout)
+    } else {
+      throw new Error(containerResult.stderr || '获取容器列表失败')
+    }
+    
+    // 同时获取镜像列表
+    const imageResult = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['images', '--format', '{{json .}}']
+    )
+    
+    if (imageResult.exit_code === 0 && imageResult.stdout) {
+      images.value = parseImageOutput(imageResult.stdout)
+    }
+    
+    // 获取运行中容器的资源使用情况
+    await updateContainerMetrics()
+    
     ElMessage.success('容器列表已刷新')
   } catch (error) {
     ElMessage.error(`获取容器列表失败: ${(error as Error).message}`)
@@ -1480,48 +1558,44 @@ async function refreshContainers() {
 }
 
 async function refreshImages() {
+  if (!selectedServer.value) return
+  
   imagesLoading.value = true
   try {
-    await new Promise(resolve => setTimeout(resolve, 300))
-    // 数据已在 initSimulatedData 中初始化
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['images', '--format', '{{json .}}']
+    )
+    
+    if (result.exit_code === 0 && result.stdout) {
+      images.value = parseImageOutput(result.stdout)
+    } else {
+      throw new Error(result.stderr || '获取镜像列表失败')
+    }
+  } catch (error) {
+    ElMessage.error(`获取镜像列表失败: ${(error as Error).message}`)
   } finally {
     imagesLoading.value = false
   }
 }
 
 async function containerAction(containerId: string, action: string) {
+  if (!selectedServer.value) return
+  
   try {
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    const container = containers.value.find(c => c.id === containerId)
-    if (container) {
-      switch (action) {
-        case 'start':
-          container.state = 'running'
-          container.status = 'Up 1 second'
-          container.cpu = 5
-          container.memory = 100000000
-          break
-        case 'stop':
-          container.state = 'exited'
-          container.status = 'Exited (0) just now'
-          container.cpu = undefined
-          container.memory = undefined
-          break
-        case 'pause':
-          container.state = 'paused'
-          container.status = container.status.replace('Up', 'Up') + ' (Paused)'
-          break
-        case 'unpause':
-          container.state = 'running'
-          container.status = container.status.replace(' (Paused)', '')
-          break
-        case 'restart':
-          container.status = 'Up 1 second'
-          break
-      }
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      [action, containerId]
+    )
+    
+    if (result.exit_code !== 0) {
+      throw new Error(result.stderr || `${action} 操作失败`)
     }
 
+    // 刷新容器列表以获取最新状态
+    await refreshContainers()
     ElMessage.success(`${action} 操作成功`)
   } catch (error) {
     ElMessage.error(`操作失败: ${(error as Error).message}`)
@@ -1563,10 +1637,29 @@ function showContainerDetail(container: Container) {
   showDetailDialog.value = true
 }
 
-function showLogs(container: Container) {
+async function showLogs(container: Container) {
+  if (!selectedServer.value) return
+  
   currentContainer.value = container
-  logContent.value = generateSimulatedLogs(container)
+  logContent.value = '正在加载日志...'
   showLogDialog.value = true
+  
+  try {
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['logs', '--tail', String(logLines.value), container.id]
+    )
+    
+    if (result.exit_code === 0) {
+      logContent.value = result.stdout || result.stderr || '(无日志)'
+    } else {
+      logContent.value = result.stderr || '获取日志失败'
+    }
+  } catch (error) {
+    logContent.value = `获取日志失败: ${(error as Error).message}`
+  }
+  
   nextTick(() => {
     if (logContainer.value) {
       logContainer.value.scrollTop = logContainer.value.scrollHeight
@@ -1574,39 +1667,24 @@ function showLogs(container: Container) {
   })
 }
 
-function generateSimulatedLogs(container: Container): string {
-  const logs: string[] = []
-  const now = new Date()
-
-  for (let i = 0; i < logLines.value; i++) {
-    const time = new Date(now.getTime() - (logLines.value - i) * 60000)
-    const timestamp = time.toISOString()
-
-    if (container.name.includes('nginx')) {
-      const ips = ['192.168.1.100', '10.0.0.50', '172.16.0.25']
-      const paths = ['/', '/api/users', '/api/data', '/static/js/app.js', '/health']
-      const codes = ['200', '200', '200', '304', '404', '500']
-      logs.push(`${timestamp} ${ips[i % 3]} - - "GET ${paths[i % 5]} HTTP/1.1" ${codes[i % 6]} ${Math.floor(Math.random() * 5000)}`)
-    } else if (container.name.includes('mysql')) {
-      const queries = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'COMMIT']
-      logs.push(`${timestamp} [Note] ${queries[i % 5]} query executed in ${Math.floor(Math.random() * 100)}ms`)
-    } else if (container.name.includes('redis')) {
-      const commands = ['GET', 'SET', 'HGET', 'LPUSH', 'EXPIRE']
-      logs.push(`${timestamp} ${commands[i % 5]} key:${Math.floor(Math.random() * 1000)}`)
+async function refreshLogs() {
+  if (!currentContainer.value || !selectedServer.value) return
+  
+  try {
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['logs', '--tail', String(logLines.value), currentContainer.value.id]
+    )
+    
+    if (result.exit_code === 0) {
+      logContent.value = result.stdout || result.stderr || '(无日志)'
+      ElMessage.success('日志已刷新')
     } else {
-      const levels = ['INFO', 'DEBUG', 'WARN', 'ERROR']
-      const messages = ['Request processed', 'Connection established', 'Cache hit', 'Task completed', 'Health check passed']
-      logs.push(`${timestamp} [${levels[i % 4]}] ${messages[i % 5]}`)
+      ElMessage.error(result.stderr || '获取日志失败')
     }
-  }
-
-  return logs.join('\n')
-}
-
-function refreshLogs() {
-  if (currentContainer.value) {
-    logContent.value = generateSimulatedLogs(currentContainer.value)
-    ElMessage.success('日志已刷新')
+  } catch (error) {
+    ElMessage.error(`获取日志失败: ${(error as Error).message}`)
   }
 }
 
@@ -1699,19 +1777,14 @@ async function saveEnvChanges() {
     return
   }
 
-  try {
-    await new Promise(resolve => setTimeout(resolve, 500))
+  // 注意：Docker 不支持直接修改运行中容器的环境变量
+  // 这里只是更新本地显示，实际需要重新创建容器才能生效
+  currentContainer.value.env = editingEnvs.value
+    .filter(e => e.key)
+    .map(e => `${e.key}=${e.value}`)
 
-    // 更新容器环境变量
-    currentContainer.value.env = editingEnvs.value
-      .filter(e => e.key)
-      .map(e => `${e.key}=${e.value}`)
-
-    showEnvEditDialog.value = false
-    ElMessage.success('环境变量已更新（需要重启容器生效）')
-  } catch (error) {
-    ElMessage.error(`保存失败: ${(error as Error).message}`)
-  }
+  showEnvEditDialog.value = false
+  ElMessage.warning('环境变量已在本地更新。注意：Docker 不支持直接修改运行中容器的环境变量，需要重新创建容器才能生效。')
 }
 
 // 容器终端功能
@@ -1741,6 +1814,7 @@ function focusTerminalInput() {
 async function executeTerminalCommand() {
   const command = terminalInput.value.trim()
   if (!command) return
+  if (!selectedServer.value || !currentContainer.value) return
 
   // 添加到历史
   terminalHistory.value.push(command)
@@ -1749,11 +1823,44 @@ async function executeTerminalCommand() {
   // 显示命令
   terminalOutput.value.push(`<span class="terminal-prompt">${currentContainer.value?.name}:~# </span>${escapeHtml(command)}`)
 
-  // 模拟命令执行
-  const output = simulateTerminalCommand(command)
-  terminalOutput.value.push(...output)
-  terminalOutput.value.push('')
+  // 处理本地命令
+  if (command.toLowerCase().trim() === 'clear') {
+    terminalOutput.value = []
+    terminalInput.value = ''
+    return
+  }
+  
+  if (command.toLowerCase().trim() === 'exit') {
+    showTerminalDialog.value = false
+    terminalInput.value = ''
+    return
+  }
 
+  // 通过 docker exec 执行命令
+  try {
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['exec', currentContainer.value.id, 'sh', '-c', command],
+      { timeout: 30 }
+    )
+    
+    if (result.stdout) {
+      const lines = result.stdout.split('\n').map(line => escapeHtml(line))
+      terminalOutput.value.push(...lines)
+    }
+    if (result.stderr) {
+      const lines = result.stderr.split('\n').map(line => `<span class="terminal-error">${escapeHtml(line)}</span>`)
+      terminalOutput.value.push(...lines)
+    }
+    if (result.exit_code !== 0 && !result.stdout && !result.stderr) {
+      terminalOutput.value.push(`<span class="terminal-error">命令执行失败，退出码: ${result.exit_code}</span>`)
+    }
+  } catch (error) {
+    terminalOutput.value.push(`<span class="terminal-error">执行错误: ${escapeHtml((error as Error).message)}</span>`)
+  }
+
+  terminalOutput.value.push('')
   terminalInput.value = ''
 
   // 滚动到底部
@@ -1762,94 +1869,6 @@ async function executeTerminalCommand() {
       terminalContainer.value.scrollTop = terminalContainer.value.scrollHeight
     }
   })
-}
-
-function simulateTerminalCommand(command: string): string[] {
-  const cmd = command.toLowerCase().trim()
-
-  if (cmd === 'ls' || cmd === 'ls -la') {
-    return [
-      'total 48',
-      'drwxr-xr-x 5 root root 4096 Jan 25 10:30 .',
-      'drwxr-xr-x 1 root root 4096 Jan 15 08:00 ..',
-      '-rw-r--r-- 1 root root 3526 Jan 15 10:00 app.js',
-      'drwxr-xr-x 2 root root 4096 Jan 20 14:30 node_modules',
-      '-rw-r--r-- 1 root root 1234 Jan 25 09:00 package.json'
-    ]
-  }
-
-  if (cmd === 'pwd') {
-    return ['/app']
-  }
-
-  if (cmd === 'whoami') {
-    return ['root']
-  }
-
-  if (cmd === 'hostname') {
-    return [currentContainer.value?.id?.substring(0, 12) || 'container']
-  }
-
-  if (cmd === 'env' || cmd === 'printenv') {
-    return currentContainer.value?.env || ['No environment variables']
-  }
-
-  if (cmd === 'ps aux' || cmd === 'ps') {
-    return [
-      'USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND',
-      'root         1  0.0  0.1  18236  3456 ?        Ss   10:30   0:00 /bin/sh',
-      'root        15  2.5  3.1 245678 52428 ?        S    10:30   1:25 node app.js'
-    ]
-  }
-
-  if (cmd === 'df -h') {
-    return [
-      'Filesystem      Size  Used Avail Use% Mounted on',
-      'overlay          50G   15G   35G  30% /',
-      'tmpfs            64M     0   64M   0% /dev',
-      'shm              64M     0   64M   0% /dev/shm'
-    ]
-  }
-
-  if (cmd === 'free -h' || cmd === 'free') {
-    return [
-      '              total        used        free      shared  buff/cache   available',
-      'Mem:          7.8Gi       2.1Gi       3.2Gi       256Mi       2.5Gi       5.2Gi',
-      'Swap:            0B          0B          0B'
-    ]
-  }
-
-  if (cmd === 'cat /etc/os-release') {
-    return [
-      'NAME="Alpine Linux"',
-      'ID=alpine',
-      'VERSION_ID=3.18.4',
-      'PRETTY_NAME="Alpine Linux v3.18"'
-    ]
-  }
-
-  if (cmd === 'exit') {
-    showTerminalDialog.value = false
-    return []
-  }
-
-  if (cmd === 'help') {
-    return [
-      '可用命令: ls, pwd, whoami, hostname, env, ps, df, free, cat, exit, help',
-      '这是一个模拟终端，实际命令将通过 Docker exec 执行'
-    ]
-  }
-
-  if (cmd === 'clear') {
-    terminalOutput.value = []
-    return []
-  }
-
-  if (cmd.startsWith('echo ')) {
-    return [command.substring(5)]
-  }
-
-  return [`<span class="terminal-error">命令未找到: ${escapeHtml(command)}</span>`]
 }
 
 function historyUp() {
@@ -1888,28 +1907,35 @@ async function retagImage() {
     ElMessage.warning('请填写新的仓库名和标签')
     return
   }
+  if (!selectedServer.value || !currentImage.value) return
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    // 添加新标签的镜像
-    const newImage: Image = {
-      id: currentImage.value!.id,
-      repository: retagForm.value.newRepository,
-      tag: retagForm.value.newTag,
-      size: currentImage.value!.size,
-      created: new Date().toISOString().split('T')[0]
+    const sourceTag = `${currentImage.value.repository}:${currentImage.value.tag}`
+    const targetTag = `${retagForm.value.newRepository}:${retagForm.value.newTag}`
+    
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['tag', sourceTag, targetTag]
+    )
+    
+    if (result.exit_code !== 0) {
+      throw new Error(result.stderr || '标记镜像失败')
     }
 
-    images.value.unshift(newImage)
     showRetagDialog.value = false
-    ElMessage.success(`镜像已标记为 ${retagForm.value.newRepository}:${retagForm.value.newTag}`)
+    ElMessage.success(`镜像已标记为 ${targetTag}`)
+    
+    // 刷新镜像列表
+    await refreshImages()
   } catch (error) {
     ElMessage.error(`标记失败: ${(error as Error).message}`)
   }
 }
 
 async function deleteContainer(container: Container) {
+  if (!selectedServer.value) return
+  
   try {
     await ElMessageBox.confirm(
       `确定要删除容器 "${container.name}" 吗？此操作不可恢复。`,
@@ -1917,30 +1943,124 @@ async function deleteContainer(container: Container) {
       { type: 'warning' }
     )
 
-    await new Promise(resolve => setTimeout(resolve, 500))
+    // 先停止容器（如果正在运行）
+    if (container.state === 'running') {
+      await window.electronAPI.server.executeCommand(
+        selectedServer.value,
+        'docker',
+        ['stop', container.id]
+      )
+    }
+    
+    // 删除容器
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['rm', container.id]
+    )
+    
+    if (result.exit_code !== 0) {
+      throw new Error(result.stderr || '删除容器失败')
+    }
+    
     containers.value = containers.value.filter(c => c.id !== container.id)
     ElMessage.success('容器已删除')
-  } catch {
-    // 用户取消
+  } catch (error) {
+    if ((error as Error).message !== 'cancel') {
+      ElMessage.error(`删除失败: ${(error as Error).message}`)
+    }
   }
 }
 
 // 容器实时监控
-function showContainerStats(container: Container) {
+async function showContainerStats(container: Container) {
+  if (!selectedServer.value) return
+  
   currentContainer.value = container
-  // 生成模拟监控数据
-  const now = new Date()
+  
+  // 初始化空数据
   containerStats.value = {
-    cpu: Array.from({ length: 20 }, () => Math.random() * 30 + (container.cpu || 5)),
-    memory: Array.from({ length: 20 }, () => Math.random() * 100000000 + (container.memory || 100000000)),
-    networkRx: Array.from({ length: 20 }, () => Math.random() * 1000000),
-    networkTx: Array.from({ length: 20 }, () => Math.random() * 500000),
-    timestamps: Array.from({ length: 20 }, (_, i) => {
-      const t = new Date(now.getTime() - (19 - i) * 3000)
-      return t.toLocaleTimeString()
-    })
+    cpu: [],
+    memory: [],
+    networkRx: [],
+    networkTx: [],
+    timestamps: []
   }
+  
   showStatsDialog.value = true
+  
+  // 获取实时统计数据
+  try {
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['stats', '--no-stream', '--format', '{{json .}}', container.id]
+    )
+    
+    if (result.exit_code === 0 && result.stdout) {
+      const lines = result.stdout.trim().split('\n').filter(line => line.trim())
+      const now = new Date()
+      
+      lines.forEach(line => {
+        try {
+          const data = JSON.parse(line)
+          
+          // 解析 CPU 百分比
+          const cpuStr = data.CPUPerc || '0%'
+          const cpuValue = parseFloat(cpuStr.replace('%', '')) || 0
+          
+          // 解析内存使用
+          const memStr = data.MemUsage || '0B / 0B'
+          const memMatch = memStr.match(/([\d.]+)\s*(B|KiB|MiB|GiB|KB|MB|GB)/i)
+          let memValue = 0
+          if (memMatch) {
+            const value = parseFloat(memMatch[1])
+            const unit = memMatch[2].toUpperCase()
+            const multipliers: Record<string, number> = {
+              'B': 1, 'KIB': 1024, 'KB': 1024,
+              'MIB': 1024 * 1024, 'MB': 1024 * 1024,
+              'GIB': 1024 * 1024 * 1024, 'GB': 1024 * 1024 * 1024
+            }
+            memValue = value * (multipliers[unit] || 1)
+          }
+          
+          // 解析网络 I/O
+          const netStr = data.NetIO || '0B / 0B'
+          const netParts = netStr.split('/')
+          const parseNetValue = (str: string): number => {
+            const match = str.trim().match(/([\d.]+)\s*(B|KB|MB|GB|KiB|MiB|GiB)/i)
+            if (!match) return 0
+            const value = parseFloat(match[1])
+            const unit = match[2].toUpperCase()
+            const multipliers: Record<string, number> = {
+              'B': 1, 'KB': 1024, 'KIB': 1024,
+              'MB': 1024 * 1024, 'MIB': 1024 * 1024,
+              'GB': 1024 * 1024 * 1024, 'GIB': 1024 * 1024 * 1024
+            }
+            return value * (multipliers[unit] || 1)
+          }
+          
+          // 填充历史数据（用当前值填充）
+          for (let i = 0; i < 20; i++) {
+            containerStats.value.cpu.push(cpuValue + (Math.random() - 0.5) * 2)
+            containerStats.value.memory.push(memValue + (Math.random() - 0.5) * memValue * 0.1)
+            containerStats.value.networkRx.push(parseNetValue(netParts[0] || '0B'))
+            containerStats.value.networkTx.push(parseNetValue(netParts[1] || '0B'))
+            const t = new Date(now.getTime() - (19 - i) * 3000)
+            containerStats.value.timestamps.push(t.toLocaleTimeString())
+          }
+          
+          // 更新容器的当前资源使用
+          container.cpu = cpuValue
+          container.memory = memValue
+        } catch {
+          // 忽略解析错误
+        }
+      })
+    }
+  } catch (error) {
+    ElMessage.error(`获取容器统计信息失败: ${(error as Error).message}`)
+  }
 }
 
 // 导出容器配置
@@ -1984,10 +2104,43 @@ function cloneContainer(container: Container) {
 
 // 网络操作
 async function loadNetworks() {
+  if (!selectedServer.value) return
+  
   networksLoading.value = true
   try {
-    await new Promise(resolve => setTimeout(resolve, 300))
-    // 数据已在 initSimulatedData 中初始化
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['network', 'ls', '--format', '{{json .}}']
+    )
+    
+    if (result.exit_code === 0 && result.stdout) {
+      networks.value = parseNetworkOutput(result.stdout)
+      
+      // 获取每个网络的详细信息（子网、网关等）
+      for (const network of networks.value) {
+        try {
+          const inspectResult = await window.electronAPI.server.executeCommand(
+            selectedServer.value!,
+            'docker',
+            ['network', 'inspect', network.id, '--format', '{{json .}}']
+          )
+          if (inspectResult.exit_code === 0 && inspectResult.stdout) {
+            const data = JSON.parse(inspectResult.stdout.trim())
+            const ipamConfig = data.IPAM?.Config?.[0] || {}
+            network.subnet = ipamConfig.Subnet || ''
+            network.gateway = ipamConfig.Gateway || ''
+            network.containers = Object.keys(data.Containers || {}).length
+          }
+        } catch {
+          // 忽略单个网络的详情获取失败
+        }
+      }
+    } else {
+      throw new Error(result.stderr || '获取网络列表失败')
+    }
+  } catch (error) {
+    ElMessage.error(`获取网络列表失败: ${(error as Error).message}`)
   } finally {
     networksLoading.value = false
   }
@@ -1998,31 +2151,42 @@ async function createNetwork() {
     ElMessage.warning('请输入网络名称')
     return
   }
+  if (!selectedServer.value) return
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    const newNetwork: Network = {
-      id: 'net' + Math.random().toString(36).substring(2, 8),
-      name: createNetworkForm.value.name,
-      driver: createNetworkForm.value.driver,
-      scope: 'local',
-      subnet: createNetworkForm.value.subnet || '172.20.0.0/16',
-      gateway: createNetworkForm.value.gateway || '172.20.0.1',
-      containers: 0,
-      created: new Date().toISOString().split('T')[0]
+    const args = ['network', 'create', '--driver', createNetworkForm.value.driver]
+    if (createNetworkForm.value.subnet) {
+      args.push('--subnet', createNetworkForm.value.subnet)
+    }
+    if (createNetworkForm.value.gateway) {
+      args.push('--gateway', createNetworkForm.value.gateway)
+    }
+    args.push(createNetworkForm.value.name)
+    
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      args
+    )
+    
+    if (result.exit_code !== 0) {
+      throw new Error(result.stderr || '创建网络失败')
     }
 
-    networks.value.push(newNetwork)
     showCreateNetworkDialog.value = false
     createNetworkForm.value = { name: '', driver: 'bridge', subnet: '', gateway: '' }
     ElMessage.success('网络创建成功')
+    
+    // 刷新网络列表
+    await loadNetworks()
   } catch (error) {
     ElMessage.error(`创建失败: ${(error as Error).message}`)
   }
 }
 
 async function deleteNetwork(network: Network) {
+  if (!selectedServer.value) return
+  
   try {
     await ElMessageBox.confirm(
       `确定要删除网络 "${network.name}" 吗？`,
@@ -2030,11 +2194,22 @@ async function deleteNetwork(network: Network) {
       { type: 'warning' }
     )
 
-    await new Promise(resolve => setTimeout(resolve, 300))
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['network', 'rm', network.id]
+    )
+    
+    if (result.exit_code !== 0) {
+      throw new Error(result.stderr || '删除网络失败')
+    }
+    
     networks.value = networks.value.filter(n => n.id !== network.id)
     ElMessage.success('网络已删除')
-  } catch {
-    // 用户取消
+  } catch (error) {
+    if ((error as Error).message !== 'cancel') {
+      ElMessage.error(`删除失败: ${(error as Error).message}`)
+    }
   }
 }
 
@@ -2057,10 +2232,64 @@ function showNetworkDetail(network: Network) {
 
 // 卷操作
 async function loadVolumes() {
+  if (!selectedServer.value) return
+  
   volumesLoading.value = true
   try {
-    await new Promise(resolve => setTimeout(resolve, 300))
-    // 数据已在 initSimulatedData 中初始化
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['volume', 'ls', '--format', '{{json .}}']
+    )
+    
+    if (result.exit_code === 0 && result.stdout) {
+      volumes.value = parseVolumeOutput(result.stdout)
+      
+      // 获取每个卷的详细信息
+      for (const volume of volumes.value) {
+        try {
+          const inspectResult = await window.electronAPI.server.executeCommand(
+            selectedServer.value!,
+            'docker',
+            ['volume', 'inspect', volume.name, '--format', '{{json .}}']
+          )
+          if (inspectResult.exit_code === 0 && inspectResult.stdout) {
+            const data = JSON.parse(inspectResult.stdout.trim())
+            volume.mountpoint = data.Mountpoint || ''
+            volume.created = data.CreatedAt || ''
+          }
+        } catch {
+          // 忽略单个卷的详情获取失败
+        }
+      }
+      
+      // 检查卷是否在使用中
+      const psResult = await window.electronAPI.server.executeCommand(
+        selectedServer.value,
+        'docker',
+        ['ps', '-a', '--format', '{{json .Mounts}}']
+      )
+      if (psResult.exit_code === 0 && psResult.stdout) {
+        const usedVolumes = new Set<string>()
+        psResult.stdout.split('\n').forEach(line => {
+          if (line.trim()) {
+            // 简单匹配卷名
+            volumes.value.forEach(v => {
+              if (line.includes(v.name)) {
+                usedVolumes.add(v.name)
+              }
+            })
+          }
+        })
+        volumes.value.forEach(v => {
+          v.inUse = usedVolumes.has(v.name)
+        })
+      }
+    } else {
+      throw new Error(result.stderr || '获取卷列表失败')
+    }
+  } catch (error) {
+    ElMessage.error(`获取卷列表失败: ${(error as Error).message}`)
   } finally {
     volumesLoading.value = false
   }
@@ -2071,28 +2300,33 @@ async function createVolume() {
     ElMessage.warning('请输入卷名称')
     return
   }
+  if (!selectedServer.value) return
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    const newVolume: Volume = {
-      name: createVolumeForm.value.name,
-      driver: createVolumeForm.value.driver,
-      mountpoint: `/var/lib/docker/volumes/${createVolumeForm.value.name}/_data`,
-      created: new Date().toISOString().split('T')[0],
-      inUse: false
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['volume', 'create', '--driver', createVolumeForm.value.driver, createVolumeForm.value.name]
+    )
+    
+    if (result.exit_code !== 0) {
+      throw new Error(result.stderr || '创建卷失败')
     }
 
-    volumes.value.push(newVolume)
     showCreateVolumeDialog.value = false
     createVolumeForm.value = { name: '', driver: 'local' }
     ElMessage.success('卷创建成功')
+    
+    // 刷新卷列表
+    await loadVolumes()
   } catch (error) {
     ElMessage.error(`创建失败: ${(error as Error).message}`)
   }
 }
 
 async function deleteVolume(volume: Volume) {
+  if (!selectedServer.value) return
+  
   try {
     await ElMessageBox.confirm(
       `确定要删除卷 "${volume.name}" 吗？`,
@@ -2100,11 +2334,22 @@ async function deleteVolume(volume: Volume) {
       { type: 'warning' }
     )
 
-    await new Promise(resolve => setTimeout(resolve, 300))
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['volume', 'rm', volume.name]
+    )
+    
+    if (result.exit_code !== 0) {
+      throw new Error(result.stderr || '删除卷失败')
+    }
+    
     volumes.value = volumes.value.filter(v => v.name !== volume.name)
     ElMessage.success('卷已删除')
-  } catch {
-    // 用户取消
+  } catch (error) {
+    if ((error as Error).message !== 'cancel') {
+      ElMessage.error(`删除失败: ${(error as Error).message}`)
+    }
   }
 }
 
@@ -2123,17 +2368,41 @@ function showVolumeDetail(volume: Volume) {
 }
 
 // 镜像历史
-function showImageHistory(image: Image) {
+async function showImageHistory(image: Image) {
+  if (!selectedServer.value) return
+  
   currentImage.value = image
-  // 生成模拟历史数据
-  imageHistory.value = [
-    { id: image.id, created: '2024-01-15 10:00:00', createdBy: '/bin/sh -c #(nop) CMD ["nginx" "-g" "daemon off;"]', size: 0 },
-    { id: 'sha256:layer1', created: '2024-01-15 09:58:00', createdBy: '/bin/sh -c #(nop) EXPOSE 80', size: 0 },
-    { id: 'sha256:layer2', created: '2024-01-15 09:55:00', createdBy: '/bin/sh -c apt-get update && apt-get install -y nginx', size: 85000000 },
-    { id: 'sha256:layer3', created: '2024-01-15 09:50:00', createdBy: '/bin/sh -c #(nop) ENV NGINX_VERSION=1.25.3', size: 0 },
-    { id: 'sha256:base', created: '2024-01-10 08:00:00', createdBy: '/bin/sh -c #(nop) ADD file:xxx in /', size: 57000000 }
-  ]
+  imageHistory.value = []
   showImageHistoryDialog.value = true
+  
+  try {
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['history', '--format', '{{json .}}', `${image.repository}:${image.tag}`]
+    )
+    
+    if (result.exit_code === 0 && result.stdout) {
+      const lines = result.stdout.trim().split('\n').filter(line => line.trim())
+      imageHistory.value = lines.map(line => {
+        try {
+          const data = JSON.parse(line)
+          return {
+            id: data.ID || '<missing>',
+            created: data.CreatedAt || data.CreatedSince || '',
+            createdBy: data.CreatedBy || '',
+            size: parseImageSizeToBytes(data.Size || '0B')
+          }
+        } catch {
+          return null
+        }
+      }).filter((h): h is { id: string; created: string; createdBy: string; size: number } => h !== null)
+    } else {
+      throw new Error(result.stderr || '获取镜像历史失败')
+    }
+  } catch (error) {
+    ElMessage.error(`获取镜像历史失败: ${(error as Error).message}`)
+  }
 }
 
 // 构建镜像
@@ -2142,23 +2411,33 @@ async function buildImage() {
     ElMessage.warning('请输入镜像名称')
     return
   }
+  if (!selectedServer.value) return
 
   try {
     ElMessage.info('开始构建镜像...')
-    await new Promise(resolve => setTimeout(resolve, 2000))
-
-    const newImage: Image = {
-      id: 'sha256:' + Math.random().toString(36).substring(2, 14),
-      repository: buildImageForm.value.name,
-      tag: buildImageForm.value.tag || 'latest',
-      size: Math.floor(Math.random() * 300000000) + 100000000,
-      created: new Date().toISOString().split('T')[0]
+    
+    // 注意：远程构建镜像需要 Dockerfile 在服务器上
+    // 这里我们使用 docker build 命令，但需要 Dockerfile 路径
+    const tag = `${buildImageForm.value.name}:${buildImageForm.value.tag || 'latest'}`
+    const context = buildImageForm.value.context || '.'
+    
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['build', '-t', tag, context],
+      { timeout: 600 }
+    )
+    
+    if (result.exit_code !== 0) {
+      throw new Error(result.stderr || '构建镜像失败')
     }
 
-    images.value.unshift(newImage)
     showBuildImageDialog.value = false
     buildImageForm.value = { name: '', tag: 'latest', dockerfile: '', context: '.' }
     ElMessage.success('镜像构建成功')
+    
+    // 刷新镜像列表
+    await refreshImages()
   } catch (error) {
     ElMessage.error(`构建失败: ${(error as Error).message}`)
   }
@@ -2186,32 +2465,49 @@ async function createContainer() {
     ElMessage.warning('请填写容器名称和镜像')
     return
   }
+  if (!selectedServer.value) return
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 800))
-
-    const newContainer: Container = {
-      id: Math.random().toString(36).substring(2, 14),
-      name: createForm.value.name,
-      image: createForm.value.image,
-      state: 'running',
-      status: 'Up 1 second',
-      ports: createForm.value.ports
-        .filter(p => p.host && p.container)
-        .map(p => ({ hostPort: p.host, containerPort: p.container })),
-      cpu: 1,
-      memory: 50000000,
-      created: new Date().toISOString().split('T')[0],
-      startedAt: new Date().toISOString(),
-      networkMode: 'bridge',
-      restartPolicy: createForm.value.restartPolicy,
-      env: createForm.value.envs
-        .filter(e => e.key)
-        .map(e => `${e.key}=${e.value}`),
-      mounts: []
+    // 构建 docker run 命令参数
+    const args = ['run', '-d', '--name', createForm.value.name]
+    
+    // 添加端口映射
+    createForm.value.ports
+      .filter(p => p.host && p.container)
+      .forEach(p => {
+        args.push('-p', `${p.host}:${p.container}`)
+      })
+    
+    // 添加环境变量
+    createForm.value.envs
+      .filter(e => e.key)
+      .forEach(e => {
+        args.push('-e', `${e.key}=${e.value}`)
+      })
+    
+    // 添加重启策略
+    if (createForm.value.restartPolicy && createForm.value.restartPolicy !== 'no') {
+      args.push('--restart', createForm.value.restartPolicy)
+    }
+    
+    // 添加镜像
+    args.push(createForm.value.image)
+    
+    // 添加命令（如果有）
+    if (createForm.value.command) {
+      args.push(...createForm.value.command.split(' ').filter(s => s))
+    }
+    
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      args
+    )
+    
+    if (result.exit_code !== 0) {
+      throw new Error(result.stderr || '创建容器失败')
     }
 
-    containers.value.unshift(newContainer)
     showCreateDialog.value = false
 
     // 重置表单
@@ -2225,6 +2521,9 @@ async function createContainer() {
     }
 
     ElMessage.success('容器创建成功')
+    
+    // 刷新容器列表
+    await refreshContainers()
   } catch (error) {
     ElMessage.error(`创建失败: ${(error as Error).message}`)
   }
@@ -2240,6 +2539,7 @@ async function pullImage() {
     ElMessage.warning('请输入镜像名称')
     return
   }
+  if (!selectedServer.value) return
 
   isPulling.value = true
   pullProgress.value = 0
@@ -2247,29 +2547,33 @@ async function pullImage() {
   pullMessage.value = '正在连接...'
 
   try {
-    // 模拟拉取进度
-    for (let i = 0; i <= 100; i += 10) {
-      await new Promise(resolve => setTimeout(resolve, 300))
-      pullProgress.value = i
-      if (i < 30) pullMessage.value = '正在下载层...'
-      else if (i < 70) pullMessage.value = '正在解压...'
-      else if (i < 100) pullMessage.value = '正在验证...'
-      else pullMessage.value = '完成'
+    // 解析镜像名称和标签
+    const [imageName, tag] = pullImageName.value.includes(':') 
+      ? pullImageName.value.split(':') 
+      : [pullImageName.value, 'latest']
+    
+    pullMessage.value = '正在拉取镜像...'
+    pullProgress.value = 10
+    
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['pull', `${imageName}:${tag}`],
+      { timeout: 600 }
+    )
+    
+    if (result.exit_code !== 0) {
+      throw new Error(result.stderr || '拉取镜像失败')
     }
-
+    
+    pullProgress.value = 100
     pullStatus.value = 'success'
-
-    // 添加新镜像
-    const [repo, tag] = pullImageName.value.split(':')
-    images.value.unshift({
-      id: 'sha256:' + Math.random().toString(36).substring(2, 14),
-      repository: repo,
-      tag: tag || 'latest',
-      size: Math.floor(Math.random() * 500000000) + 50000000,
-      created: new Date().toISOString().split('T')[0]
-    })
+    pullMessage.value = '完成'
 
     ElMessage.success('镜像拉取成功')
+    
+    // 刷新镜像列表
+    await refreshImages()
 
     setTimeout(() => {
       showPullImageDialog.value = false
@@ -2286,6 +2590,8 @@ async function pullImage() {
 }
 
 async function deleteImage(image: Image) {
+  if (!selectedServer.value) return
+  
   try {
     await ElMessageBox.confirm(
       `确定要删除镜像 "${image.repository}:${image.tag}" 吗？`,
@@ -2293,11 +2599,22 @@ async function deleteImage(image: Image) {
       { type: 'warning' }
     )
 
-    await new Promise(resolve => setTimeout(resolve, 300))
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'docker',
+      ['rmi', image.id]
+    )
+    
+    if (result.exit_code !== 0) {
+      throw new Error(result.stderr || '删除镜像失败')
+    }
+    
     images.value = images.value.filter(img => img.id !== image.id)
     ElMessage.success('镜像已删除')
-  } catch {
-    // 用户取消
+  } catch (error) {
+    if ((error as Error).message !== 'cancel') {
+      ElMessage.error(`删除失败: ${(error as Error).message}`)
+    }
   }
 }
 </script>

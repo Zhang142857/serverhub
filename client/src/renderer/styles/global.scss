@@ -224,13 +224,95 @@ html, body {
 }
 
 .el-table {
-  --el-table-bg-color: transparent;
-  --el-table-tr-bg-color: transparent;
+  --el-table-bg-color: var(--bg-secondary);
+  --el-table-tr-bg-color: var(--bg-secondary);
   --el-table-header-bg-color: var(--bg-tertiary);
   --el-table-row-hover-bg-color: var(--bg-tertiary);
   --el-table-border-color: var(--border-color);
   --el-table-text-color: var(--text-color);
   --el-table-header-text-color: var(--text-secondary);
+  --el-fill-color-blank: var(--bg-secondary);
+  --el-fill-color-light: var(--bg-tertiary);
+  --el-table-current-row-bg-color: var(--bg-tertiary);
+  --el-table-fixed-box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-color) !important;
+}
+
+.el-table__inner-wrapper {
+  background-color: var(--bg-secondary) !important;
+}
+
+.el-table__body-wrapper {
+  background-color: var(--bg-secondary) !important;
+}
+
+.el-table__header-wrapper {
+  background-color: var(--bg-tertiary) !important;
+}
+
+.el-table__body {
+  background-color: var(--bg-secondary) !important;
+}
+
+.el-table__row {
+  background-color: var(--bg-secondary) !important;
+  
+  &:hover > td {
+    background-color: var(--bg-tertiary) !important;
+  }
+  
+  td {
+    background-color: var(--bg-secondary) !important;
+    border-bottom-color: var(--border-color) !important;
+  }
+}
+
+.el-table__header {
+  th {
+    background-color: var(--bg-tertiary) !important;
+    color: var(--text-secondary) !important;
+    border-bottom-color: var(--border-color) !important;
+  }
+}
+
+.el-table__cell {
+  background-color: inherit !important;
+}
+
+.el-table__empty-block {
+  background-color: var(--bg-secondary) !important;
+}
+
+.el-table__empty-text {
+  color: var(--text-secondary) !important;
+}
+
+.el-table--striped .el-table__body tr.el-table__row--striped td {
+  background-color: var(--bg-tertiary) !important;
+}
+
+.el-table--border .el-table__inner-wrapper::after,
+.el-table--border::before,
+.el-table--border::after {
+  background-color: var(--border-color) !important;
+}
+
+.el-table__fixed-right-patch {
+  background-color: var(--bg-tertiary) !important;
+}
+
+.el-table__fixed,
+.el-table__fixed-right {
+  background-color: var(--bg-secondary) !important;
+  
+  th {
+    background-color: var(--bg-tertiary) !important;
+  }
+  
+  td {
+    background-color: var(--bg-secondary) !important;
+  }
 }
 
 .el-menu {
@@ -389,4 +471,420 @@ html, body {
 
 .animate-spin {
   animation: spin 1s linear infinite;
+}
+
+
+// 修复更多 Element Plus 组件的深色模式
+.el-checkbox {
+  --el-checkbox-bg-color: var(--bg-tertiary);
+  --el-checkbox-input-border: 1px solid var(--border-color);
+}
+
+.el-checkbox__inner {
+  background-color: var(--bg-tertiary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.el-checkbox.is-checked .el-checkbox__inner {
+  background-color: var(--primary-color) !important;
+  border-color: var(--primary-color) !important;
+}
+
+.el-radio {
+  --el-radio-input-bg-color: var(--bg-tertiary);
+  --el-radio-input-border: 1px solid var(--border-color);
+}
+
+.el-radio__inner {
+  background-color: var(--bg-tertiary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.el-radio.is-checked .el-radio__inner {
+  background-color: var(--primary-color) !important;
+  border-color: var(--primary-color) !important;
+}
+
+.el-radio-button__inner {
+  background-color: var(--bg-tertiary) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-color) !important;
+}
+
+.el-radio-button.is-active .el-radio-button__inner {
+  background-color: var(--primary-color) !important;
+  border-color: var(--primary-color) !important;
+  color: #fff !important;
+}
+
+.el-progress-bar__outer {
+  background-color: var(--bg-tertiary) !important;
+}
+
+.el-switch {
+  --el-switch-off-color: var(--bg-tertiary);
+}
+
+.el-switch__core {
+  background-color: var(--bg-tertiary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.el-switch.is-checked .el-switch__core {
+  background-color: var(--primary-color) !important;
+  border-color: var(--primary-color) !important;
+}
+
+// 修复 el-input-number
+.el-input-number {
+  .el-input__wrapper {
+    background-color: var(--bg-tertiary) !important;
+  }
+}
+
+// 修复 el-pagination
+.el-pagination {
+  --el-pagination-bg-color: var(--bg-tertiary);
+  --el-pagination-button-bg-color: var(--bg-tertiary);
+  --el-pagination-hover-color: var(--primary-color);
+}
+
+.el-pager li {
+  background-color: var(--bg-tertiary) !important;
+  color: var(--text-color) !important;
+}
+
+.el-pager li.is-active {
+  background-color: var(--primary-color) !important;
+  color: #fff !important;
+}
+
+// 修复 el-breadcrumb
+.el-breadcrumb__inner {
+  color: var(--text-secondary) !important;
+}
+
+.el-breadcrumb__item:last-child .el-breadcrumb__inner {
+  color: var(--text-color) !important;
+}
+
+// 修复 el-upload
+.el-upload-dragger {
+  background-color: var(--bg-tertiary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.el-upload-dragger:hover {
+  border-color: var(--primary-color) !important;
+}
+
+// 修复 el-collapse
+.el-collapse {
+  --el-collapse-header-bg-color: var(--bg-tertiary);
+  --el-collapse-content-bg-color: var(--bg-secondary);
+  border-color: var(--border-color) !important;
+}
+
+.el-collapse-item__header {
+  background-color: var(--bg-tertiary) !important;
+  color: var(--text-color) !important;
+  border-color: var(--border-color) !important;
+}
+
+.el-collapse-item__content {
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-color) !important;
+}
+
+// 修复 el-timeline
+.el-timeline-item__tail {
+  border-color: var(--border-color) !important;
+}
+
+// 修复 el-divider
+.el-divider {
+  border-color: var(--border-color) !important;
+}
+
+.el-divider__text {
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-secondary) !important;
+}
+
+// 修复 el-input wrapper
+.el-input__wrapper {
+  background-color: var(--bg-tertiary) !important;
+  box-shadow: 0 0 0 1px var(--border-color) inset !important;
+  
+  &:hover {
+    box-shadow: 0 0 0 1px var(--text-secondary) inset !important;
+  }
+  
+  &.is-focus {
+    box-shadow: 0 0 0 1px var(--primary-color) inset !important;
+  }
+}
+
+.el-input__inner {
+  color: var(--text-color) !important;
+  
+  &::placeholder {
+    color: var(--text-secondary) !important;
+  }
+}
+
+// 修复 el-textarea
+.el-textarea__inner {
+  background-color: var(--bg-tertiary) !important;
+  color: var(--text-color) !important;
+  border-color: var(--border-color) !important;
+  
+  &:focus {
+    border-color: var(--primary-color) !important;
+  }
+}
+
+// 修复 el-select 下拉
+.el-select__wrapper {
+  background-color: var(--bg-tertiary) !important;
+  box-shadow: 0 0 0 1px var(--border-color) inset !important;
+}
+
+.el-select__placeholder {
+  color: var(--text-secondary) !important;
+}
+
+.el-select__selected-item {
+  color: var(--text-color) !important;
+}
+
+// 修复 el-form
+.el-form-item__label {
+  color: var(--text-color) !important;
+}
+
+.el-form-item__error {
+  color: var(--danger-color) !important;
+}
+
+// 修复 el-loading
+.el-loading-mask {
+  background-color: rgba(15, 15, 26, 0.8) !important;
+}
+
+.el-loading-text {
+  color: var(--text-color) !important;
+}
+
+// 修复 el-tooltip
+.el-tooltip__trigger {
+  color: inherit;
+}
+
+// 修复 el-badge
+.el-badge__content {
+  border: none !important;
+}
+
+// 修复 el-scrollbar
+.el-scrollbar__bar {
+  background-color: transparent;
+}
+
+.el-scrollbar__thumb {
+  background-color: var(--border-color) !important;
+  
+  &:hover {
+    background-color: var(--text-secondary) !important;
+  }
+}
+
+// 修复 el-popover
+.el-popover.el-popper {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-color) !important;
+}
+
+// 修复 el-date-picker
+.el-date-editor {
+  --el-date-editor-bg-color: var(--bg-tertiary);
+}
+
+.el-picker__popper {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.el-date-table td.available:hover {
+  background-color: var(--bg-tertiary) !important;
+}
+
+.el-date-table td.current:not(.disabled) span {
+  background-color: var(--primary-color) !important;
+}
+
+// 修复 el-time-picker
+.el-time-panel {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.el-time-spinner__item {
+  color: var(--text-color) !important;
+  
+  &:hover:not(.is-disabled):not(.is-active) {
+    background-color: var(--bg-tertiary) !important;
+  }
+  
+  &.is-active:not(.is-disabled) {
+    color: var(--primary-color) !important;
+  }
+}
+
+// 修复 el-slider
+.el-slider__runway {
+  background-color: var(--bg-tertiary) !important;
+}
+
+.el-slider__bar {
+  background-color: var(--primary-color) !important;
+}
+
+.el-slider__button {
+  border-color: var(--primary-color) !important;
+}
+
+// 修复 el-rate
+.el-rate__icon {
+  color: var(--border-color) !important;
+}
+
+// 修复 el-step
+.el-step__head.is-wait {
+  color: var(--text-secondary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.el-step__title.is-wait {
+  color: var(--text-secondary) !important;
+}
+
+.el-step__line {
+  background-color: var(--border-color) !important;
+}
+
+// 修复 el-tree
+.el-tree {
+  background-color: transparent !important;
+  color: var(--text-color) !important;
+}
+
+.el-tree-node__content:hover {
+  background-color: var(--bg-tertiary) !important;
+}
+
+.el-tree-node.is-current > .el-tree-node__content {
+  background-color: var(--bg-tertiary) !important;
+}
+
+// 修复 el-transfer
+.el-transfer-panel {
+  background-color: var(--bg-secondary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.el-transfer-panel__header {
+  background-color: var(--bg-tertiary) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-color) !important;
+}
+
+.el-transfer-panel__body {
+  background-color: var(--bg-secondary) !important;
+}
+
+// 修复 el-color-picker
+.el-color-picker__trigger {
+  border-color: var(--border-color) !important;
+}
+
+// 修复 el-cascader
+.el-cascader-menu {
+  background-color: var(--bg-secondary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.el-cascader-node {
+  color: var(--text-color) !important;
+  
+  &:hover {
+    background-color: var(--bg-tertiary) !important;
+  }
+}
+
+// 修复 el-statistic
+.el-statistic__head {
+  color: var(--text-secondary) !important;
+}
+
+.el-statistic__content {
+  color: var(--text-color) !important;
+}
+
+// 修复 el-result
+.el-result__title {
+  color: var(--text-color) !important;
+}
+
+.el-result__subtitle {
+  color: var(--text-secondary) !important;
+}
+
+// 修复 el-skeleton
+.el-skeleton__item {
+  background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--bg-secondary) 37%, var(--bg-tertiary) 63%) !important;
+}
+
+// 修复 el-image-viewer
+.el-image-viewer__wrapper {
+  background-color: rgba(0, 0, 0, 0.9) !important;
+}
+
+// 修复 el-drawer
+.el-drawer {
+  background-color: var(--bg-secondary) !important;
+}
+
+.el-drawer__header {
+  color: var(--text-color) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+.el-drawer__body {
+  color: var(--text-color) !important;
+}
+
+// 修复 el-notification
+.el-notification {
+  background-color: var(--bg-secondary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.el-notification__title {
+  color: var(--text-color) !important;
+}
+
+.el-notification__content {
+  color: var(--text-secondary) !important;
+}
+
+// 修复 el-message
+.el-message {
+  background-color: var(--bg-secondary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.el-message__content {
+  color: var(--text-color) !important;
 }

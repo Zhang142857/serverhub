@@ -165,6 +165,7 @@ const loading = ref(false)
 const selectedServer = ref('')
 
 const metrics = ref<Record<string, { cpu: number; memory: number; disk: number; networkIn: number; networkOut: number }>>({})
+const lastNetworkBytes = ref<Record<string, { bytesIn: number; bytesOut: number; timestamp: number }>>({})
 const cpuHistory = ref<number[]>([])
 const memoryHistory = ref<number[]>([])
 const cleanupFns = ref<Record<string, () => void>>({})
@@ -311,7 +312,20 @@ async function startMetrics(serverId: string) {
     if (info) {
       const cpu = info.cpu?.usage ?? info.cpu?.usedPercent ?? 0
       const mem = info.memory?.usedPercent ?? info.memory?.used_percent ?? 0
-      const disk = info.disks?.length ? info.disks.reduce((s: number, d: any) => s + (d.used_percent || d.usedPercent || 0), 0) / info.disks.length : 0
+      // 过滤掉 snap 分区计算磁盘使用率
+      let disk = 0
+      if (info.disks?.length) {
+        const filteredDisks = info.disks.filter((d: any) => {
+          const mount = d.mountpoint || ''
+          if (mount.startsWith('/snap/')) return false
+          if (mount.startsWith('/run/')) return false
+          if (d.total && d.total < 100 * 1024 * 1024) return false
+          return true
+        })
+        if (filteredDisks.length > 0) {
+          disk = filteredDisks.reduce((s: number, d: any) => s + (d.used_percent || d.usedPercent || 0), 0) / filteredDisks.length
+        }
+      }
       const netIn = info.network?.bytes_recv ?? info.network?.bytesRecv ?? 0
       const netOut = info.network?.bytes_sent ?? info.network?.bytesSent ?? 0
       metrics.value[serverId] = { cpu, memory: mem, disk, networkIn: netIn, networkOut: netOut }
@@ -319,19 +333,42 @@ async function startMetrics(serverId: string) {
 
     // 启动指标流
     await window.electronAPI.server.startMetrics(serverId, 2)
+    
+    let lastDataTime = Date.now()
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    
     const cleanup = window.electronAPI.server.onMetrics(serverId, (m) => {
+      lastDataTime = Date.now()
+      
       const cpu = m.cpu_usage ?? 0
       const mem = m.memory_usage ?? 0
       const disk = metrics.value[serverId]?.disk ?? 0
-      // 从 network_metrics 数组计算网络流量
-      let netIn = 0, netOut = 0
+      
+      // 从 network_metrics 数组计算网络流量速率
+      let totalBytesIn = 0, totalBytesOut = 0
       if (m.network_metrics?.length) {
         m.network_metrics.forEach(n => {
-          netIn += n.bytes_recv || 0
-          netOut += n.bytes_sent || 0
+          totalBytesIn += n.bytes_recv || 0
+          totalBytesOut += n.bytes_sent || 0
         })
       }
-      metrics.value[serverId] = { cpu, memory: mem, disk, networkIn: netIn, networkOut: netOut }
+      
+      // 计算速率（字节/秒）
+      let netInRate = 0, netOutRate = 0
+      const lastNet = lastNetworkBytes.value[serverId]
+      const now = Date.now()
+      if (lastNet && lastNet.timestamp > 0) {
+        const timeDiff = (now - lastNet.timestamp) / 1000 // 秒
+        if (timeDiff > 0 && timeDiff < 10) { // 合理的时间间隔
+          netInRate = Math.max(0, (totalBytesIn - lastNet.bytesIn) / timeDiff)
+          netOutRate = Math.max(0, (totalBytesOut - lastNet.bytesOut) / timeDiff)
+        }
+      }
+      
+      // 保存当前字节数用于下次计算
+      lastNetworkBytes.value[serverId] = { bytesIn: totalBytesIn, bytesOut: totalBytesOut, timestamp: now }
+      
+      metrics.value[serverId] = { cpu, memory: mem, disk, networkIn: netInRate, networkOut: netOutRate }
       
       // 更新历史数据
       cpuHistory.value.push(avgCpu.value)
@@ -339,9 +376,41 @@ async function startMetrics(serverId: string) {
       if (cpuHistory.value.length > 120) cpuHistory.value.shift()
       if (memoryHistory.value.length > 120) memoryHistory.value.shift()
     })
-    cleanupFns.value[serverId] = cleanup
+    
+    // 检测数据流是否中断，如果超过 10 秒没有数据则尝试重连
+    const checkConnection = () => {
+      if (Date.now() - lastDataTime > 10000) {
+        console.log('Metrics stream timeout, reconnecting...')
+        cleanup()
+        if (cleanupFns.value[serverId]) {
+          delete cleanupFns.value[serverId]
+        }
+        // 延迟重连
+        reconnectTimer = setTimeout(() => {
+          if (connectedServers.value.find(s => s.id === serverId)) {
+            startMetrics(serverId)
+          }
+        }, 2000)
+      } else {
+        reconnectTimer = setTimeout(checkConnection, 5000)
+      }
+    }
+    reconnectTimer = setTimeout(checkConnection, 10000)
+    
+    cleanupFns.value[serverId] = () => {
+      cleanup()
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+      }
+    }
   } catch (e) {
     console.error('Metrics error:', e)
+    // 出错后延迟重试
+    setTimeout(() => {
+      if (connectedServers.value.find(s => s.id === serverId)) {
+        startMetrics(serverId)
+      }
+    }, 5000)
   }
 }
 
@@ -352,6 +421,7 @@ async function refresh() {
     Object.values(cleanupFns.value).forEach(fn => fn())
     cleanupFns.value = {}
     metrics.value = {}
+    lastNetworkBytes.value = {}
     cpuHistory.value = []
     memoryHistory.value = []
     // 重新初始化

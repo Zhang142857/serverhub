@@ -53,9 +53,9 @@
             <span class="tab-label">Compose <el-badge :value="composeProjects.length" :max="99" type="info" /></span>
           </template>
         </el-tab-pane>
-        <el-tab-pane name="hub">
+        <el-tab-pane name="settings">
           <template #label>
-            <span class="tab-label"><el-icon><Shop /></el-icon> 应用商店</span>
+            <span class="tab-label"><el-icon><Setting /></el-icon> 设置</span>
           </template>
         </el-tab-pane>
       </el-tabs>
@@ -231,57 +231,83 @@
         </el-table>
       </div>
 
-      <!-- 应用商店标签页 -->
-      <div v-show="activeTab === 'hub'" class="tab-content">
-        <div class="toolbar">
-          <el-input v-model="hubSearch" placeholder="搜索 Docker Hub 镜像..." size="small" clearable style="width: 300px"
-            @keyup.enter="searchDockerHub">
-            <template #prefix><el-icon><Search /></el-icon></template>
-          </el-input>
-          <el-button type="primary" size="small" @click="searchDockerHub" :loading="hubSearching">搜索</el-button>
+      <!-- 设置标签页 -->
+      <div v-show="activeTab === 'settings'" class="tab-content">
+        <div class="settings-section">
+          <h3>网络代理设置</h3>
+          <p class="section-desc">配置 Docker 操作的网络代理方式</p>
+          
+          <el-form :model="dockerProxy" label-width="120px" size="small" class="proxy-form">
+            <el-form-item label="代理模式">
+              <el-radio-group v-model="dockerProxy.mode">
+                <el-radio value="none">不使用代理</el-radio>
+                <el-radio value="http">HTTP/HTTPS 代理</el-radio>
+                <el-radio value="server">服务端代理</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            
+            <template v-if="dockerProxy.mode === 'http'">
+              <el-form-item label="HTTP 代理">
+                <el-input v-model="dockerProxy.httpProxy" placeholder="http://proxy.example.com:8080" />
+              </el-form-item>
+              <el-form-item label="HTTPS 代理">
+                <el-input v-model="dockerProxy.httpsProxy" placeholder="http://proxy.example.com:8080" />
+              </el-form-item>
+              <el-form-item label="不代理地址">
+                <el-input v-model="dockerProxy.noProxy" placeholder="localhost,127.0.0.1" />
+              </el-form-item>
+            </template>
+            
+            <template v-if="dockerProxy.mode === 'server'">
+              <el-alert type="info" :closable="false" style="margin-bottom: 16px;">
+                <template #title>
+                  服务端代理模式：所有 Docker Hub 搜索请求将通过服务端 Agent 转发，适用于客户端无法直接访问 Docker Hub 的情况。
+                </template>
+              </el-alert>
+            </template>
+            
+            <el-form-item>
+              <el-button type="primary" @click="saveDockerProxy" :loading="savingProxy">保存代理设置</el-button>
+              <el-button @click="loadDockerProxy">重新加载</el-button>
+            </el-form-item>
+          </el-form>
         </div>
 
-        <!-- 热门应用 -->
-        <div v-if="!hubSearchResults.length && !hubSearching" class="popular-apps">
-          <h3>热门应用 - 一键部署</h3>
-          <div class="app-grid">
-            <div v-for="app in popularApps" :key="app.name" class="app-card" @click="showDeployDialog(app)">
-              <div class="app-icon">{{ app.icon }}</div>
-              <div class="app-info">
-                <div class="app-name">{{ app.name }}</div>
-                <div class="app-desc">{{ app.description }}</div>
-              </div>
-              <el-button type="primary" size="small" class="deploy-btn">部署</el-button>
-            </div>
+        <div class="settings-section">
+          <h3>镜像源设置</h3>
+          <p class="section-desc">配置 Docker 镜像源地址，用于加速镜像拉取（仅加速拉取，不支持搜索）</p>
+          
+          <el-form :model="dockerMirror" label-width="120px" size="small" class="mirror-form">
+            <el-form-item label="启用镜像源">
+              <el-switch v-model="dockerMirror.enabled" />
+            </el-form-item>
+            <el-form-item label="镜像源地址" v-if="dockerMirror.enabled">
+              <el-input v-model="dockerMirror.mirrors" type="textarea" :rows="3" placeholder="https://mirror.ccs.tencentyun.com&#10;https://registry.docker-cn.com" />
+              <div class="form-tip">每行一个地址，按优先级从高到低排列</div>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="saveDockerMirror" :loading="savingMirror">保存镜像源设置</el-button>
+            </el-form-item>
+          </el-form>
+
+          <div class="mirror-presets">
+            <span class="preset-label">快速设置：</span>
+            <el-button size="small" text type="primary" @click="setMirrorPreset('tencent')">腾讯云</el-button>
+            <el-button size="small" text type="primary" @click="setMirrorPreset('aliyun')">阿里云</el-button>
+            <el-button size="small" text type="primary" @click="setMirrorPreset('ustc')">中科大</el-button>
           </div>
         </div>
 
-        <!-- 搜索结果 -->
-        <div v-if="hubSearchResults.length || hubSearching" class="search-results">
-          <el-table :data="hubSearchResults" v-loading="hubSearching" size="small" class="data-table">
-            <el-table-column prop="name" label="镜像名称" min-width="200">
-              <template #default="{ row }">
-                <div class="hub-name">
-                  <el-icon v-if="row.is_official" color="#3b82f6"><CircleCheck /></el-icon>
-                  <span>{{ row.name }}</span>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="description" label="描述" min-width="300" show-overflow-tooltip />
-            <el-table-column prop="star_count" label="Stars" width="100">
-              <template #default="{ row }">
-                <span>⭐ {{ formatStars(row.star_count) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="180" fixed="right">
-              <template #default="{ row }">
-                <el-button-group size="small">
-                  <el-button type="primary" @click="quickDeploy(row)">部署</el-button>
-                  <el-button @click="pullHubImage(row.name)">拉取</el-button>
-                </el-button-group>
-              </template>
-            </el-table-column>
-          </el-table>
+        <div class="settings-section">
+          <h3>Docker 信息</h3>
+          <div class="docker-info" v-if="dockerInfo">
+            <div class="info-row"><span class="label">Docker 版本</span><span class="value">{{ dockerInfo.version }}</span></div>
+            <div class="info-row"><span class="label">存储驱动</span><span class="value">{{ dockerInfo.storageDriver }}</span></div>
+            <div class="info-row"><span class="label">容器数量</span><span class="value">{{ dockerInfo.containers }}</span></div>
+            <div class="info-row"><span class="label">镜像数量</span><span class="value">{{ dockerInfo.images }}</span></div>
+            <div class="info-row"><span class="label">数据目录</span><span class="value">{{ dockerInfo.dataRoot }}</span></div>
+          </div>
+          <el-button size="small" @click="loadDockerInfo" :loading="loadingInfo" style="margin-top: 12px;">刷新信息</el-button>
         </div>
       </div>
     </template>
@@ -329,19 +355,122 @@
       </template>
     </el-dialog>
 
-    <!-- 拉取镜像对话框 -->
-    <el-dialog v-model="showPullImage" title="拉取镜像" width="400px" class="dark-dialog">
-      <el-form label-width="80px" size="small">
-        <el-form-item label="镜像名称" required>
-          <el-input v-model="pullImageName" placeholder="nginx:latest" />
-        </el-form-item>
-      </el-form>
+    <!-- 拉取镜像对话框 - 集成 Docker Hub 搜索 -->
+    <el-dialog v-model="showPullImage" title="拉取镜像" width="700px" class="dark-dialog pull-dialog">
+      <div class="pull-search">
+        <div class="search-row">
+          <el-input 
+            v-model="pullSearchQuery" 
+            placeholder="搜索镜像，如 nginx、mysql、redis..." 
+            size="default"
+            clearable
+            @input="debouncedSearch"
+            @keyup.enter="searchForPull"
+          >
+            <template #prefix><el-icon><Search /></el-icon></template>
+          </el-input>
+          <el-button @click="searchForPull" :loading="pullSearching" style="margin-left: 8px;">搜索</el-button>
+        </div>
+        <div class="search-tip">
+          <el-icon><InfoFilled /></el-icon>
+          <span v-if="dockerProxy.mode === 'server'">使用服务端代理搜索 Docker Hub</span>
+          <span v-else-if="dockerProxy.mode === 'http'">使用 HTTP 代理搜索 Docker Hub</span>
+          <span v-else>搜索本地镜像库（50+ 常用镜像），在线搜索可能需要代理</span>
+        </div>
+      </div>
+
+      <!-- 搜索结果 -->
+      <div class="pull-results" v-if="pullSearchResults.length > 0">
+        <div class="results-header">搜索结果</div>
+        <div class="results-list">
+          <div 
+            v-for="item in pullSearchResults" 
+            :key="item.repo_name || item.name" 
+            class="result-item"
+            :class="{ selected: selectedPullImage?.repo_name === item.repo_name || selectedPullImage?.name === item.name }"
+            @click="selectPullImage(item)"
+          >
+            <div class="result-icon">
+              <el-icon v-if="item.is_official" color="#3b82f6"><CircleCheck /></el-icon>
+              <span v-else>🐳</span>
+            </div>
+            <div class="result-info">
+              <div class="result-name">
+                {{ item.repo_name || item.name }}
+                <el-tag v-if="item.is_official" size="small" type="primary">官方</el-tag>
+              </div>
+              <div class="result-desc">{{ item.short_description || item.description || '暂无描述' }}</div>
+              <div class="result-stats">
+                <span>⭐ {{ formatStars(item.star_count) }}</span>
+                <span v-if="item.pull_count">⬇️ {{ formatPullCount(item.pull_count) }}</span>
+              </div>
+            </div>
+            <el-icon class="result-check" v-if="selectedPullImage?.repo_name === item.repo_name || selectedPullImage?.name === item.name"><Select /></el-icon>
+          </div>
+        </div>
+      </div>
+
+      <!-- 空状态 -->
+      <div v-else-if="!pullSearching && pullSearchQuery" class="pull-empty">
+        <el-empty description="未找到相关镜像，请尝试其他关键词" :image-size="80" />
+      </div>
+
+      <!-- 初始状态 - 显示热门镜像 -->
+      <div v-else-if="!pullSearching && !pullSearchQuery" class="pull-popular">
+        <div class="results-header">热门镜像</div>
+        <div class="results-list">
+          <div 
+            v-for="item in popularPullImages" 
+            :key="item.name" 
+            class="result-item"
+            :class="{ selected: selectedPullImage?.name === item.name }"
+            @click="selectPullImage(item)"
+          >
+            <div class="result-icon">{{ item.icon }}</div>
+            <div class="result-info">
+              <div class="result-name">{{ item.name }}</div>
+              <div class="result-desc">{{ item.description }}</div>
+            </div>
+            <el-icon class="result-check" v-if="selectedPullImage?.name === item.name"><Select /></el-icon>
+          </div>
+        </div>
+      </div>
+
+      <!-- 加载中 -->
+      <div v-if="pullSearching" class="pull-loading">
+        <el-icon class="is-loading" :size="24"><Loading /></el-icon>
+        <span>搜索中...</span>
+      </div>
+
+      <!-- 已选择的镜像 -->
+      <div v-if="selectedPullImage" class="selected-image">
+        <div class="selected-header">已选择镜像</div>
+        <div class="selected-content">
+          <div class="selected-name">{{ selectedPullImage.name }}</div>
+          <el-select v-model="selectedPullTag" size="small" style="width: 120px;">
+            <el-option value="latest" label="latest" />
+            <el-option v-for="tag in commonTags" :key="tag" :value="tag" :label="tag" />
+          </el-select>
+        </div>
+      </div>
+
+      <!-- 拉取输出 -->
       <div v-if="pullOutput" class="pull-output">
+        <div class="output-header">拉取日志</div>
         <pre>{{ pullOutput }}</pre>
       </div>
+
       <template #footer>
-        <el-button size="small" @click="showPullImage = false">取消</el-button>
-        <el-button type="primary" size="small" @click="pullImage" :loading="pulling">拉取</el-button>
+        <el-button size="small" @click="closePullDialog">取消</el-button>
+        <el-button 
+          type="primary" 
+          size="small" 
+          @click="pullSelectedImage" 
+          :loading="pulling"
+          :disabled="!selectedPullImage"
+        >
+          拉取镜像
+        </el-button>
       </template>
     </el-dialog>
 
@@ -420,7 +549,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useServerStore } from '@/stores/server'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Search, Shop, CircleCheck } from '@element-plus/icons-vue'
+import { Refresh, Search, CircleCheck, Setting, Select, Loading, InfoFilled } from '@element-plus/icons-vue'
 
 interface Container {
   id: string
@@ -499,6 +628,31 @@ const newVolume = ref({ name: '' })
 const pullImageName = ref('')
 const pullOutput = ref('')
 const pulling = ref(false)
+
+// 拉取镜像搜索相关
+const pullSearchQuery = ref('')
+const pullSearchResults = ref<any[]>([])
+const pullSearching = ref(false)
+const selectedPullImage = ref<any>(null)
+const selectedPullTag = ref('latest')
+const commonTags = ['latest', 'alpine', 'slim', 'stable', 'lts']
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+// 热门镜像列表（用于拉取对话框初始显示）
+const popularPullImages = [
+  { name: 'nginx', icon: '🌐', description: '高性能 Web 服务器和反向代理' },
+  { name: 'mysql', icon: '🐬', description: '流行的关系型数据库' },
+  { name: 'redis', icon: '🔴', description: '高性能键值存储数据库' },
+  { name: 'postgres', icon: '🐘', description: '强大的开源关系型数据库' },
+  { name: 'mongo', icon: '🍃', description: 'NoSQL 文档数据库' },
+  { name: 'node', icon: '💚', description: 'Node.js 运行环境' },
+  { name: 'python', icon: '🐍', description: 'Python 运行环境' },
+  { name: 'ubuntu', icon: '🐧', description: 'Ubuntu Linux 基础镜像' },
+  { name: 'alpine', icon: '🏔️', description: '轻量级 Linux 基础镜像 (5MB)' },
+  { name: 'ollama/ollama', icon: '🤖', description: 'Ollama 本地大模型运行' },
+  { name: 'portainer/portainer-ce', icon: '🐳', description: 'Docker 可视化管理' },
+  { name: 'jenkins/jenkins', icon: '🔧', description: 'Jenkins CI/CD 服务器' },
+]
 const creating = ref(false)
 
 // Docker Hub 搜索
@@ -511,6 +665,50 @@ const showDeploy = ref(false)
 const deploying = ref(false)
 const deployApp = ref<any>(null)
 const deployConfig = ref<any>({ name: '', tag: 'latest', ports: {}, envs: {}, volumes: {}, restart: true })
+
+// Docker 代理设置
+const dockerProxy = ref({ mode: 'none' as 'none' | 'http' | 'server', httpProxy: '', httpsProxy: '', noProxy: 'localhost,127.0.0.1' })
+const dockerMirror = ref({ enabled: false, mirrors: '' })
+const savingProxy = ref(false)
+const savingMirror = ref(false)
+const loadingInfo = ref(false)
+const dockerInfo = ref<any>(null)
+
+// 从 localStorage 加载设置
+function loadDockerSettings() {
+  try {
+    const proxyStr = localStorage.getItem('docker_proxy_settings')
+    if (proxyStr) {
+      const saved = JSON.parse(proxyStr)
+      // 兼容旧格式（enabled 字段）
+      if (saved.enabled !== undefined && saved.mode === undefined) {
+        saved.mode = saved.enabled ? 'http' : 'none'
+        delete saved.enabled
+      }
+      dockerProxy.value = { ...dockerProxy.value, ...saved }
+    }
+    const mirrorStr = localStorage.getItem('docker_mirror_settings')
+    if (mirrorStr) {
+      dockerMirror.value = JSON.parse(mirrorStr)
+    }
+  } catch (e) {
+    console.error('Failed to load docker settings:', e)
+  }
+}
+
+// 保存设置到 localStorage
+function saveDockerSettingsToLocal() {
+  try {
+    localStorage.setItem('docker_proxy_settings', JSON.stringify(dockerProxy.value))
+    localStorage.setItem('docker_mirror_settings', JSON.stringify(dockerMirror.value))
+  } catch (e) {
+    console.error('Failed to save docker settings:', e)
+  }
+}
+
+// Docker Hub 热门镜像
+const hubTrending = ref<any[]>([])
+const loadingTrending = ref(false)
 
 // 热门应用配置
 const popularApps = [
@@ -644,9 +842,14 @@ watch(selectedServer, (val) => {
 })
 
 onMounted(() => {
+  // 加载本地保存的 Docker 设置
+  loadDockerSettings()
+  
   if (connectedServers.value.length > 0) {
     selectedServer.value = serverStore.currentServerId || connectedServers.value[0].id
   }
+  // 加载 Docker Hub 热门镜像
+  loadHubTrending()
 })
 
 async function checkDockerAndLoad() {
@@ -845,6 +1048,223 @@ async function pullImage() {
   }
 }
 
+// 拉取镜像对话框相关函数
+function debouncedSearch() {
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+  searchDebounceTimer = setTimeout(() => {
+    if (pullSearchQuery.value.trim()) {
+      searchForPull()
+    } else {
+      pullSearchResults.value = []
+    }
+  }, 500)
+}
+
+async function searchForPull() {
+  if (!pullSearchQuery.value.trim()) return
+  pullSearching.value = true
+  pullSearchResults.value = []
+  
+  const query = pullSearchQuery.value.toLowerCase().trim()
+  
+  // 优先使用本地镜像列表搜索（不需要网络）
+  const localResults = getLocalPopularImages().filter(
+    img => img.name.toLowerCase().includes(query) || 
+           img.short_description.toLowerCase().includes(query)
+  )
+  
+  if (localResults.length > 0) {
+    pullSearchResults.value = localResults
+    pullSearching.value = false
+    return
+  }
+  
+  // 本地没有匹配的，根据代理模式选择搜索方式
+  try {
+    // 服务端代理模式：通过 Agent 搜索 Docker Hub
+    if (dockerProxy.value.mode === 'server' && selectedServer.value) {
+      const response = await window.electronAPI.docker.searchHub(
+        selectedServer.value,
+        pullSearchQuery.value,
+        20,
+        1
+      )
+      
+      if (response.success && response.results?.length > 0) {
+        pullSearchResults.value = response.results.map(r => ({
+          name: r.name,
+          repo_name: r.name,
+          short_description: r.description,
+          star_count: r.star_count,
+          is_official: r.is_official,
+          pull_count: r.pull_count
+        }))
+      } else if (response.error) {
+        ElMessage.warning('服务端搜索失败: ' + response.error)
+      } else {
+        ElMessage.info('未找到匹配镜像，你可以直接从热门列表选择或手动输入镜像名')
+      }
+    } 
+    // HTTP 代理模式
+    else if (dockerProxy.value.mode === 'http') {
+      let proxyConfig: { host: string; port: number; username?: string; password?: string } | undefined
+      if (dockerProxy.value.httpProxy) {
+        try {
+          const proxyUrl = new URL(dockerProxy.value.httpProxy)
+          proxyConfig = {
+            host: proxyUrl.hostname,
+            port: parseInt(proxyUrl.port) || 80,
+            username: proxyUrl.username || undefined,
+            password: proxyUrl.password || undefined
+          }
+        } catch (e) {
+          console.warn('Invalid proxy URL:', e)
+        }
+      }
+
+      const response = await window.electronAPI.http.request({
+        url: `https://hub.docker.com/v2/search/repositories/?query=${encodeURIComponent(pullSearchQuery.value)}&page_size=10`,
+        method: 'GET',
+        timeout: 10000,
+        proxy: proxyConfig
+      })
+      
+      if (response.success && response.data?.results?.length > 0) {
+        pullSearchResults.value = response.data.results
+      } else {
+        ElMessage.info('未找到匹配镜像，你可以直接从热门列表选择或手动输入镜像名')
+      }
+    }
+    // 无代理模式：直接请求（可能会失败）
+    else {
+      const response = await window.electronAPI.http.request({
+        url: `https://hub.docker.com/v2/search/repositories/?query=${encodeURIComponent(pullSearchQuery.value)}&page_size=10`,
+        method: 'GET',
+        timeout: 10000
+      })
+      
+      if (response.success && response.data?.results?.length > 0) {
+        pullSearchResults.value = response.data.results
+      } else {
+        ElMessage.info('未找到匹配镜像，建议在设置中启用服务端代理以获得更好的搜索体验')
+      }
+    }
+  } catch (e) {
+    console.error('Search error:', e)
+    if (dockerProxy.value.mode === 'none') {
+      ElMessage.info('在线搜索失败，建议在设置中启用服务端代理')
+    } else {
+      ElMessage.info('在线搜索失败，请从热门列表选择或直接输入镜像名')
+    }
+  } finally {
+    pullSearching.value = false
+  }
+}
+
+// 本地热门镜像列表（覆盖常用镜像，不需要网络）
+function getLocalPopularImages() {
+  return [
+    { name: 'nginx', repo_name: 'nginx', short_description: '高性能 Web 服务器和反向代理', star_count: 19000, is_official: true },
+    { name: 'mysql', repo_name: 'mysql', short_description: '流行的关系型数据库', star_count: 15000, is_official: true },
+    { name: 'redis', repo_name: 'redis', short_description: '高性能键值存储数据库', star_count: 13000, is_official: true },
+    { name: 'postgres', repo_name: 'postgres', short_description: '强大的开源关系型数据库', star_count: 12000, is_official: true },
+    { name: 'mongo', repo_name: 'mongo', short_description: 'NoSQL 文档数据库', star_count: 10000, is_official: true },
+    { name: 'mariadb', repo_name: 'mariadb', short_description: 'MySQL 兼容的开源数据库', star_count: 5500, is_official: true },
+    { name: 'node', repo_name: 'node', short_description: 'Node.js 运行环境', star_count: 13000, is_official: true },
+    { name: 'python', repo_name: 'python', short_description: 'Python 运行环境', star_count: 9500, is_official: true },
+    { name: 'golang', repo_name: 'golang', short_description: 'Go 语言运行环境', star_count: 4800, is_official: true },
+    { name: 'openjdk', repo_name: 'openjdk', short_description: 'Java 运行环境', star_count: 3800, is_official: true },
+    { name: 'php', repo_name: 'php', short_description: 'PHP 运行环境', star_count: 7200, is_official: true },
+    { name: 'ruby', repo_name: 'ruby', short_description: 'Ruby 运行环境', star_count: 2100, is_official: true },
+    { name: 'ubuntu', repo_name: 'ubuntu', short_description: 'Ubuntu Linux 基础镜像', star_count: 16000, is_official: true },
+    { name: 'alpine', repo_name: 'alpine', short_description: '轻量级 Linux 基础镜像 (5MB)', star_count: 11000, is_official: true },
+    { name: 'debian', repo_name: 'debian', short_description: 'Debian Linux 基础镜像', star_count: 5000, is_official: true },
+    { name: 'centos', repo_name: 'centos', short_description: 'CentOS Linux 基础镜像', star_count: 7500, is_official: true },
+    { name: 'busybox', repo_name: 'busybox', short_description: '极简 Linux 工具集 (1MB)', star_count: 3200, is_official: true },
+    { name: 'httpd', repo_name: 'httpd', short_description: 'Apache HTTP 服务器', star_count: 4500, is_official: true },
+    { name: 'tomcat', repo_name: 'tomcat', short_description: 'Apache Tomcat 服务器', star_count: 3600, is_official: true },
+    { name: 'jenkins', repo_name: 'jenkins/jenkins', short_description: 'Jenkins CI/CD 服务器', star_count: 6000, is_official: false },
+    { name: 'gitlab', repo_name: 'gitlab/gitlab-ce', short_description: 'GitLab 社区版', star_count: 4200, is_official: false },
+    { name: 'elasticsearch', repo_name: 'elasticsearch', short_description: 'Elasticsearch 搜索引擎', star_count: 6100, is_official: true },
+    { name: 'kibana', repo_name: 'kibana', short_description: 'Kibana 数据可视化', star_count: 2800, is_official: true },
+    { name: 'logstash', repo_name: 'logstash', short_description: 'Logstash 日志处理', star_count: 2200, is_official: true },
+    { name: 'rabbitmq', repo_name: 'rabbitmq', short_description: 'RabbitMQ 消息队列', star_count: 5000, is_official: true },
+    { name: 'kafka', repo_name: 'bitnami/kafka', short_description: 'Apache Kafka 消息队列', star_count: 1800, is_official: false },
+    { name: 'zookeeper', repo_name: 'zookeeper', short_description: 'Apache ZooKeeper', star_count: 1500, is_official: true },
+    { name: 'memcached', repo_name: 'memcached', short_description: 'Memcached 缓存服务', star_count: 2100, is_official: true },
+    { name: 'wordpress', repo_name: 'wordpress', short_description: 'WordPress 博客/CMS', star_count: 4800, is_official: true },
+    { name: 'ghost', repo_name: 'ghost', short_description: 'Ghost 博客平台', star_count: 1600, is_official: true },
+    { name: 'nextcloud', repo_name: 'nextcloud', short_description: 'Nextcloud 私有云盘', star_count: 2500, is_official: true },
+    { name: 'portainer', repo_name: 'portainer/portainer-ce', short_description: 'Docker 可视化管理', star_count: 3200, is_official: false },
+    { name: 'traefik', repo_name: 'traefik', short_description: 'Traefik 反向代理/负载均衡', star_count: 2800, is_official: true },
+    { name: 'caddy', repo_name: 'caddy', short_description: 'Caddy Web 服务器 (自动 HTTPS)', star_count: 1200, is_official: true },
+    { name: 'prometheus', repo_name: 'prom/prometheus', short_description: 'Prometheus 监控系统', star_count: 2600, is_official: false },
+    { name: 'grafana', repo_name: 'grafana/grafana', short_description: 'Grafana 数据可视化', star_count: 3100, is_official: false },
+    { name: 'influxdb', repo_name: 'influxdb', short_description: 'InfluxDB 时序数据库', star_count: 1800, is_official: true },
+    { name: 'adminer', repo_name: 'adminer', short_description: '轻量级数据库管理工具', star_count: 1100, is_official: true },
+    { name: 'phpmyadmin', repo_name: 'phpmyadmin', short_description: 'MySQL Web 管理工具', star_count: 1500, is_official: true },
+    { name: 'minio', repo_name: 'minio/minio', short_description: 'MinIO 对象存储 (S3 兼容)', star_count: 2400, is_official: false },
+    { name: 'registry', repo_name: 'registry', short_description: 'Docker 私有镜像仓库', star_count: 3800, is_official: true },
+    { name: 'sonarqube', repo_name: 'sonarqube', short_description: 'SonarQube 代码质量检测', star_count: 1200, is_official: true },
+    { name: 'vault', repo_name: 'hashicorp/vault', short_description: 'HashiCorp Vault 密钥管理', star_count: 1100, is_official: false },
+    { name: 'consul', repo_name: 'hashicorp/consul', short_description: 'HashiCorp Consul 服务发现', star_count: 1000, is_official: false },
+    { name: 'etcd', repo_name: 'quay.io/coreos/etcd', short_description: 'etcd 分布式键值存储', star_count: 900, is_official: false },
+    { name: 'ollama', repo_name: 'ollama/ollama', short_description: 'Ollama 本地大模型运行', star_count: 5000, is_official: false },
+    { name: 'open-webui', repo_name: 'ghcr.io/open-webui/open-webui', short_description: 'Open WebUI (ChatGPT 风格界面)', star_count: 3000, is_official: false },
+    { name: 'code-server', repo_name: 'codercom/code-server', short_description: 'VS Code 网页版', star_count: 2200, is_official: false },
+    { name: 'gitea', repo_name: 'gitea/gitea', short_description: 'Gitea 轻量级 Git 服务', star_count: 1800, is_official: false },
+    { name: 'drone', repo_name: 'drone/drone', short_description: 'Drone CI/CD 平台', star_count: 1400, is_official: false },
+  ]
+}
+
+function selectPullImage(item: any) {
+  selectedPullImage.value = item
+  selectedPullTag.value = 'latest'
+}
+
+async function pullSelectedImage() {
+  if (!selectedServer.value || !selectedPullImage.value) {
+    ElMessage.warning('请先选择一个镜像')
+    return
+  }
+  
+  const imageName = selectedPullImage.value.repo_name || selectedPullImage.value.name
+  const fullImageName = `${imageName}:${selectedPullTag.value}`
+  
+  pulling.value = true
+  pullOutput.value = `正在拉取 ${fullImageName}...\n`
+  
+  try {
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value, 'bash', ['-c', `docker pull ${fullImageName}`]
+    )
+    pullOutput.value += result.stdout || ''
+    pullOutput.value += result.stderr || ''
+    
+    if (result.exit_code === 0) {
+      ElMessage.success('镜像拉取成功')
+      loadImages()
+    } else {
+      pullOutput.value += '\n拉取失败'
+      ElMessage.error('拉取失败')
+    }
+  } catch (e) {
+    pullOutput.value += '\n错误: ' + (e as Error).message
+    ElMessage.error('拉取失败: ' + (e as Error).message)
+  } finally {
+    pulling.value = false
+  }
+}
+
+function closePullDialog() {
+  showPullImage.value = false
+  pullSearchQuery.value = ''
+  pullSearchResults.value = []
+  selectedPullImage.value = null
+  selectedPullTag.value = 'latest'
+  pullOutput.value = ''
+}
+
 async function deleteImage(image: Image) {
   try {
     await ElMessageBox.confirm(`确定删除镜像 ${image.repository}:${image.tag}？`, '确认删除', { type: 'warning' })
@@ -996,6 +1416,27 @@ function formatStars(count: number): string {
   return String(count)
 }
 
+function formatPullCount(count: number): string {
+  if (!count) return '0'
+  if (count >= 1000000000) return (count / 1000000000).toFixed(1) + 'B'
+  if (count >= 1000000) return (count / 1000000).toFixed(1) + 'M'
+  if (count >= 1000) return (count / 1000).toFixed(1) + 'K'
+  return String(count)
+}
+
+function quickDeployFromHub(img: any) {
+  const app = {
+    name: img.name,
+    image: 'library/' + img.name,
+    defaultName: img.name,
+    tags: ['latest'],
+    ports: [],
+    envs: [],
+    volumes: []
+  }
+  showDeployDialog(app)
+}
+
 // 一键部署
 function showDeployDialog(app: any) {
   deployApp.value = app
@@ -1090,6 +1531,136 @@ async function pullHubImage(imageName: string) {
   pullImageName.value = imageName + ':latest'
   showPullImage.value = true
   await pullImage()
+}
+
+// Docker 代理设置函数
+async function loadDockerProxy() {
+  if (!selectedServer.value) return
+  try {
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value, 'bash', ['-c', 'cat /etc/systemd/system/docker.service.d/http-proxy.conf 2>/dev/null || echo ""']
+    )
+    const content = result.stdout || ''
+    if (content.includes('HTTP_PROXY')) {
+      dockerProxy.value.enabled = true
+      const httpMatch = content.match(/HTTP_PROXY=([^\s"]+)/)
+      const httpsMatch = content.match(/HTTPS_PROXY=([^\s"]+)/)
+      const noProxyMatch = content.match(/NO_PROXY=([^\s"]+)/)
+      if (httpMatch) dockerProxy.value.httpProxy = httpMatch[1]
+      if (httpsMatch) dockerProxy.value.httpsProxy = httpsMatch[1]
+      if (noProxyMatch) dockerProxy.value.noProxy = noProxyMatch[1]
+    } else {
+      dockerProxy.value.enabled = false
+    }
+  } catch (e) {
+    console.error('Load proxy error:', e)
+  }
+}
+
+async function saveDockerProxy() {
+  if (!selectedServer.value) return
+  savingProxy.value = true
+  try {
+    if (dockerProxy.value.enabled) {
+      const envLines = []
+      if (dockerProxy.value.httpProxy) envLines.push(`Environment="HTTP_PROXY=${dockerProxy.value.httpProxy}"`)
+      if (dockerProxy.value.httpsProxy) envLines.push(`Environment="HTTPS_PROXY=${dockerProxy.value.httpsProxy}"`)
+      if (dockerProxy.value.noProxy) envLines.push(`Environment="NO_PROXY=${dockerProxy.value.noProxy}"`)
+      
+      const content = `[Service]\n${envLines.join('\n')}`
+      await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 
+        `sudo mkdir -p /etc/systemd/system/docker.service.d && echo '${content}' | sudo tee /etc/systemd/system/docker.service.d/http-proxy.conf`
+      ])
+    } else {
+      await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 
+        'sudo rm -f /etc/systemd/system/docker.service.d/http-proxy.conf'
+      ])
+    }
+    // 重载 systemd 并重启 docker
+    await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 
+      'sudo systemctl daemon-reload && sudo systemctl restart docker'
+    ])
+    // 保存到本地存储
+    saveDockerSettingsToLocal()
+    ElMessage.success('代理设置已保存，Docker 已重启')
+  } catch (e) {
+    ElMessage.error('保存失败: ' + (e as Error).message)
+  } finally {
+    savingProxy.value = false
+  }
+}
+
+async function saveDockerMirror() {
+  if (!selectedServer.value) return
+  savingMirror.value = true
+  try {
+    if (dockerMirror.value.enabled && dockerMirror.value.mirrors.trim()) {
+      const mirrors = dockerMirror.value.mirrors.trim().split('\n').filter(m => m.trim()).map(m => `"${m.trim()}"`)
+      const daemonJson = `{\n  "registry-mirrors": [${mirrors.join(', ')}]\n}`
+      await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 
+        `echo '${daemonJson}' | sudo tee /etc/docker/daemon.json`
+      ])
+    } else {
+      await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 
+        'sudo rm -f /etc/docker/daemon.json'
+      ])
+    }
+    await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 
+      'sudo systemctl restart docker'
+    ])
+    // 保存到本地存储
+    saveDockerSettingsToLocal()
+    ElMessage.success('镜像加速器设置已保存，Docker 已重启')
+  } catch (e) {
+    ElMessage.error('保存失败: ' + (e as Error).message)
+  } finally {
+    savingMirror.value = false
+  }
+}
+
+function setMirrorPreset(preset: string) {
+  const presets: Record<string, string> = {
+    tencent: 'https://mirror.ccs.tencentyun.com',
+    aliyun: 'https://registry.cn-hangzhou.aliyuncs.com',
+    ustc: 'https://docker.mirrors.ustc.edu.cn'
+  }
+  dockerMirror.value.enabled = true
+  dockerMirror.value.mirrors = presets[preset] || ''
+  // 保存到本地存储
+  saveDockerSettingsToLocal()
+}
+
+async function loadDockerInfo() {
+  if (!selectedServer.value) return
+  loadingInfo.value = true
+  try {
+    const result = await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 
+      'docker info --format "{{.ServerVersion}}|{{.Driver}}|{{.Containers}}|{{.Images}}|{{.DockerRootDir}}"'
+    ])
+    if (result.stdout) {
+      const [version, storageDriver, containers, images, dataRoot] = result.stdout.trim().split('|')
+      dockerInfo.value = { version, storageDriver, containers, images, dataRoot }
+    }
+  } catch (e) {
+    console.error('Load docker info error:', e)
+  } finally {
+    loadingInfo.value = false
+  }
+}
+
+// 加载 Docker Hub 热门镜像
+async function loadHubTrending() {
+  loadingTrending.value = true
+  try {
+    // 获取官方热门镜像
+    const response = await fetch('https://hub.docker.com/v2/repositories/library/?page_size=12&ordering=-pull_count')
+    const data = await response.json()
+    hubTrending.value = data.results || []
+  } catch (e) {
+    console.error('Load trending error:', e)
+  } finally {
+    loadingTrending.value = false
+  }
 }
 </script>
 
@@ -1292,5 +1863,327 @@ async function pullHubImage(imageName: string) {
 
 .search-results {
   margin-top: 16px;
+}
+
+// Docker Hub 热门镜像样式
+.hub-trending {
+  margin-bottom: 24px;
+
+  h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--text-color);
+  }
+}
+
+.trending-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.trending-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: var(--primary-color);
+    transform: translateY(-2px);
+  }
+
+  .trending-icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    overflow: hidden;
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .default-icon {
+      font-size: 24px;
+    }
+  }
+
+  .trending-info {
+    flex: 1;
+    min-width: 0;
+
+    .trending-name {
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 2px;
+    }
+
+    .trending-desc {
+      font-size: 11px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 4px;
+    }
+
+    .trending-stats {
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+  }
+}
+
+// 设置页面样式
+.settings-section {
+  padding: 20px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  margin-bottom: 16px;
+
+  h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .section-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+  }
+}
+
+.proxy-form, .mirror-form {
+  max-width: 500px;
+
+  .form-tip {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+}
+
+.mirror-presets {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .preset-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+}
+
+.docker-info {
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    .label {
+      color: var(--text-secondary);
+      font-size: 13px;
+    }
+
+    .value {
+      font-family: monospace;
+      font-size: 13px;
+    }
+  }
+}
+
+// 拉取镜像对话框样式
+.pull-dialog {
+  :deep(.el-dialog__body) {
+    padding: 16px 20px;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+}
+
+.pull-search {
+  margin-bottom: 16px;
+  
+  .search-row {
+    display: flex;
+    align-items: center;
+  }
+  
+  .search-tip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+    
+    .el-icon {
+      color: var(--warning-color);
+    }
+  }
+}
+
+.pull-results, .pull-popular {
+  .results-header {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+  }
+
+  .results-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 280px;
+    overflow-y: auto;
+  }
+}
+
+.result-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: var(--border-color);
+  }
+
+  &.selected {
+    border-color: var(--primary-color);
+    background: rgba(99, 102, 241, 0.1);
+  }
+
+  .result-icon {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+  }
+
+  .result-info {
+    flex: 1;
+    min-width: 0;
+
+    .result-name {
+      font-weight: 500;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .result-desc {
+      font-size: 12px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+
+    .result-stats {
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+  }
+
+  .result-check {
+    color: var(--primary-color);
+    font-size: 20px;
+  }
+}
+
+.pull-empty {
+  padding: 20px 0;
+}
+
+.pull-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 0;
+  color: var(--text-secondary);
+}
+
+.selected-image {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  border: 1px solid var(--primary-color);
+
+  .selected-header {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+
+  .selected-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    .selected-name {
+      font-weight: 600;
+      font-size: 15px;
+    }
+  }
+}
+
+.pull-output {
+  margin-top: 16px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  padding: 12px;
+  max-height: 150px;
+  overflow: auto;
+
+  .output-header {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+
+  pre {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-color);
+    white-space: pre-wrap;
+    font-family: 'Consolas', monospace;
+  }
 }
 </style>

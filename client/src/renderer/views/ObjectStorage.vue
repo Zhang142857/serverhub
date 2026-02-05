@@ -22,8 +22,15 @@
       </template>
     </el-alert>
 
+    <!-- 功能开发中提示 -->
+    <el-alert v-if="currentProvider" title="功能开发中" type="info" show-icon :closable="false" class="config-alert">
+      <template #default>
+        对象存储功能需要后端 API 支持。当前已保存您的凭证配置，待后端接口完善后即可使用完整功能。
+      </template>
+    </el-alert>
+
     <!-- 主内容区 -->
-    <div v-else class="main-content">
+    <div v-if="currentProvider" class="main-content">
       <!-- 存储桶选择 -->
       <div class="bucket-selector">
         <el-select v-model="selectedBucket" placeholder="选择存储桶" @change="loadObjects" filterable>
@@ -384,17 +391,20 @@ async function loadBuckets() {
   if (!currentProvider.value) return
   loading.value = true
   try {
-    // 模拟 API 调用
-    await new Promise(r => setTimeout(r, 500))
-    buckets.value = [
-      { name: 'my-app-assets', region: 'us-east-1', creationDate: '2024-01-15' },
-      { name: 'backup-data', region: 'us-west-2', creationDate: '2024-02-20' },
-      { name: 'logs-archive', region: 'us-east-1', creationDate: '2024-03-10' }
-    ]
-    if (buckets.value.length > 0 && !selectedBucket.value) {
-      selectedBucket.value = buckets.value[0].name
-      await loadObjects()
-    }
+    // TODO: 集成真实的云存储 API
+    // 需要后端提供统一的对象存储接口，支持 S3/OSS/COS/MinIO
+    // 示例: const response = await api.objectStorage.listBuckets(currentProvider.value)
+    // buckets.value = response.data
+    
+    // 当前返回空列表，等待后端 API 实现
+    buckets.value = []
+    selectedBucket.value = ''
+    
+    ElMessage.info('对象存储功能需要后端 API 支持，请等待功能完善')
+  } catch (error) {
+    console.error('Failed to load buckets:', error)
+    ElMessage.error('加载存储桶失败')
+    buckets.value = []
   } finally {
     loading.value = false
   }
@@ -404,16 +414,17 @@ async function loadObjects() {
   if (!selectedBucket.value) return
   loading.value = true
   try {
-    // 模拟 API 调用
-    await new Promise(r => setTimeout(r, 300))
-    objects.value = [
-      { key: 'images/', name: 'images', size: 0, lastModified: '', storageClass: '', isFolder: true },
-      { key: 'documents/', name: 'documents', size: 0, lastModified: '', storageClass: '', isFolder: true },
-      { key: 'index.html', name: 'index.html', size: 15234, lastModified: '2024-06-15T10:30:00Z', storageClass: 'STANDARD', isFolder: false },
-      { key: 'style.css', name: 'style.css', size: 8456, lastModified: '2024-06-15T10:30:00Z', storageClass: 'STANDARD', isFolder: false },
-      { key: 'app.js', name: 'app.js', size: 45678, lastModified: '2024-06-14T15:20:00Z', storageClass: 'STANDARD', isFolder: false },
-      { key: 'logo.png', name: 'logo.png', size: 125890, lastModified: '2024-06-10T08:00:00Z', storageClass: 'STANDARD', isFolder: false }
-    ]
+    // TODO: 集成真实的云存储 API
+    // 需要后端提供统一的对象存储接口
+    // 示例: const response = await api.objectStorage.listObjects(currentProvider.value, selectedBucket.value, currentPath.value)
+    // objects.value = response.data
+    
+    // 当前返回空列表，等待后端 API 实现
+    objects.value = []
+  } catch (error) {
+    console.error('Failed to load objects:', error)
+    ElMessage.error('加载文件列表失败')
+    objects.value = []
   } finally {
     loading.value = false
   }
@@ -453,36 +464,45 @@ async function createBucket() {
     ElMessage.warning('请输入存储桶名称')
     return
   }
-  saving.value = true
-  try {
-    await new Promise(r => setTimeout(r, 500))
-    buckets.value.push({
-      name: bucketForm.value.name,
-      region: bucketForm.value.region,
-      creationDate: new Date().toISOString()
-    })
-    createBucketDialogVisible.value = false
-    ElMessage.success('存储桶已创建')
-    selectedBucket.value = bucketForm.value.name
-    await loadObjects()
-  } finally {
-    saving.value = false
-  }
+  
+  // TODO: 集成真实的云存储 API
+  // 需要后端提供创建存储桶接口
+  // 示例:
+  // saving.value = true
+  // try {
+  //   await api.objectStorage.createBucket(currentProvider.value, bucketForm.value)
+  //   createBucketDialogVisible.value = false
+  //   ElMessage.success('存储桶已创建')
+  //   await loadBuckets()
+  // } catch (error) {
+  //   ElMessage.error('创建存储桶失败')
+  // } finally {
+  //   saving.value = false
+  // }
+  
+  ElMessage.warning('创建存储桶功能需要后端 API 支持，暂不可用')
+  createBucketDialogVisible.value = false
 }
 
 async function deleteBucket() {
   if (!selectedBucket.value) return
   await ElMessageBox.confirm(`确定删除存储桶 "${selectedBucket.value}" 吗？此操作不可恢复。`, '确认删除', { type: 'warning' })
-  loading.value = true
-  try {
-    await new Promise(r => setTimeout(r, 500))
-    buckets.value = buckets.value.filter(b => b.name !== selectedBucket.value)
-    selectedBucket.value = buckets.value[0]?.name || ''
-    objects.value = []
-    ElMessage.success('存储桶已删除')
-  } finally {
-    loading.value = false
-  }
+  
+  // TODO: 集成真实的云存储 API
+  // 需要后端提供删除存储桶接口
+  // 示例:
+  // loading.value = true
+  // try {
+  //   await api.objectStorage.deleteBucket(currentProvider.value, selectedBucket.value)
+  //   ElMessage.success('存储桶已删除')
+  //   await loadBuckets()
+  // } catch (error) {
+  //   ElMessage.error('删除存储桶失败')
+  // } finally {
+  //   loading.value = false
+  // }
+  
+  ElMessage.warning('删除存储桶功能需要后端 API 支持，暂不可用')
 }
 
 function showUploadDialog() {
@@ -496,26 +516,27 @@ function handleUploadChange(_file: UploadFile, fileList: UploadFile[]) {
 
 async function uploadFiles() {
   if (uploadFileList.value.length === 0) return
-  uploading.value = true
-  try {
-    // 模拟上传
-    await new Promise(r => setTimeout(r, 1000))
-    for (const file of uploadFileList.value) {
-      objects.value.push({
-        key: `${currentPath.value ? currentPath.value + '/' : ''}${file.name}`,
-        name: file.name,
-        size: file.size || 0,
-        lastModified: new Date().toISOString(),
-        storageClass: 'STANDARD',
-        isFolder: false
-      })
-    }
-    uploadDialogVisible.value = false
-    ElMessage.success(`已上传 ${uploadFileList.value.length} 个文件`)
-    uploadFileList.value = []
-  } finally {
-    uploading.value = false
-  }
+  
+  // TODO: 集成真实的云存储上传 API
+  // 需要后端提供文件上传接口，支持分片上传和进度回调
+  // 示例:
+  // uploading.value = true
+  // try {
+  //   for (const file of uploadFileList.value) {
+  //     await api.objectStorage.uploadObject(currentProvider.value, selectedBucket.value, currentPath.value, file.raw)
+  //   }
+  //   uploadDialogVisible.value = false
+  //   ElMessage.success(`已上传 ${uploadFileList.value.length} 个文件`)
+  //   uploadFileList.value = []
+  //   await loadObjects()
+  // } catch (error) {
+  //   ElMessage.error('上传失败')
+  // } finally {
+  //   uploading.value = false
+  // }
+  
+  ElMessage.warning('文件上传功能需要后端 API 支持，暂不可用')
+  uploadDialogVisible.value = false
 }
 
 async function createFolder() {
@@ -526,15 +547,14 @@ async function createFolder() {
     })
     const name = typeof result === 'object' ? result.value : ''
     if (name) {
-      objects.value.unshift({
-        key: `${currentPath.value ? currentPath.value + '/' : ''}${name}/`,
-        name: name,
-        size: 0,
-        lastModified: '',
-        storageClass: '',
-        isFolder: true
-      })
-      ElMessage.success('文件夹已创建')
+      // TODO: 集成真实的云存储 API
+      // 需要后端提供创建文件夹接口（实际上是创建一个空的前缀对象）
+      // 示例:
+      // await api.objectStorage.createFolder(currentProvider.value, selectedBucket.value, currentPath.value, name)
+      // await loadObjects()
+      // ElMessage.success('文件夹已创建')
+      
+      ElMessage.warning('创建文件夹功能需要后端 API 支持，暂不可用')
     }
   } catch {
     // 用户取消
@@ -543,22 +563,41 @@ async function createFolder() {
 
 async function deleteObject(obj: StorageObject) {
   await ElMessageBox.confirm(`确定删除 "${obj.name}" 吗？`, '确认删除')
-  objects.value = objects.value.filter(o => o.key !== obj.key)
-  ElMessage.success('已删除')
+  
+  // TODO: 集成真实的云存储 API
+  // 需要后端提供删除对象接口
+  // 示例:
+  // await api.objectStorage.deleteObject(currentProvider.value, selectedBucket.value, obj.key)
+  // await loadObjects()
+  // ElMessage.success('已删除')
+  
+  ElMessage.warning('删除功能需要后端 API 支持，暂不可用')
 }
 
 async function deleteSelected() {
   if (selectedObjects.value.length === 0) return
   await ElMessageBox.confirm(`确定删除选中的 ${selectedObjects.value.length} 个项目吗？`, '确认删除')
-  const keys = selectedObjects.value.map(o => o.key)
-  objects.value = objects.value.filter(o => !keys.includes(o.key))
-  selectedObjects.value = []
-  ElMessage.success('已删除选中项目')
+  
+  // TODO: 集成真实的云存储 API
+  // 需要后端提供批量删除对象接口
+  // 示例:
+  // const keys = selectedObjects.value.map(o => o.key)
+  // await api.objectStorage.deleteObjects(currentProvider.value, selectedBucket.value, keys)
+  // selectedObjects.value = []
+  // await loadObjects()
+  // ElMessage.success('已删除选中项目')
+  
+  ElMessage.warning('批量删除功能需要后端 API 支持，暂不可用')
 }
 
 function downloadObject(obj: StorageObject) {
-  // 模拟下载
-  ElMessage.success(`开始下载 ${obj.name}`)
+  // TODO: 集成真实的云存储下载 API
+  // 需要后端提供文件下载接口，可以返回预签名 URL 或直接代理下载
+  // 示例:
+  // const url = await api.objectStorage.getDownloadUrl(currentProvider.value, selectedBucket.value, obj.key)
+  // window.open(url, '_blank')
+  
+  ElMessage.warning(`文件下载功能需要后端 API 支持，暂不可用`)
 }
 
 function copyUrl(obj: StorageObject) {

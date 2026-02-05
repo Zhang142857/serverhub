@@ -1137,75 +1137,6 @@ if (route.params.serverId) {
   selectedServer.value = serverStore.currentServerId
 }
 
-// 模拟文件数据
-function initSimulatedFiles() {
-  const basePath = currentPath.value || ''
-  const now = Math.floor(Date.now() / 1000)
-
-  if (basePath === '' || basePath === '/') {
-    files.value = [
-      { name: 'bin', path: '/bin', isDir: true, size: 0, mode: 0o755, modTime: now - 86400 * 30 },
-      { name: 'etc', path: '/etc', isDir: true, size: 0, mode: 0o755, modTime: now - 86400 * 7 },
-      { name: 'home', path: '/home', isDir: true, size: 0, mode: 0o755, modTime: now - 86400 * 2 },
-      { name: 'var', path: '/var', isDir: true, size: 0, mode: 0o755, modTime: now - 86400 },
-      { name: 'usr', path: '/usr', isDir: true, size: 0, mode: 0o755, modTime: now - 86400 * 14 },
-      { name: 'tmp', path: '/tmp', isDir: true, size: 0, mode: 0o1777, modTime: now - 3600 },
-      { name: 'root', path: '/root', isDir: true, size: 0, mode: 0o700, modTime: now - 86400 * 3 },
-      { name: 'opt', path: '/opt', isDir: true, size: 0, mode: 0o755, modTime: now - 86400 * 5 },
-    ]
-  } else if (basePath === '/home' || basePath === '/home/') {
-    files.value = [
-      { name: 'admin', path: '/home/admin', isDir: true, size: 0, mode: 0o755, modTime: now - 3600 },
-      { name: 'www-data', path: '/home/www-data', isDir: true, size: 0, mode: 0o755, modTime: now - 86400 },
-    ]
-  } else if (basePath.startsWith('/home/admin')) {
-    files.value = [
-      { name: 'projects', path: `${basePath}/projects`, isDir: true, size: 0, mode: 0o755, modTime: now - 3600 },
-      { name: 'documents', path: `${basePath}/documents`, isDir: true, size: 0, mode: 0o755, modTime: now - 7200 },
-      { name: '.bashrc', path: `${basePath}/.bashrc`, isDir: false, size: 3526, mode: 0o644, modTime: now - 86400 * 10 },
-      { name: '.profile', path: `${basePath}/.profile`, isDir: false, size: 807, mode: 0o644, modTime: now - 86400 * 30 },
-      { name: 'notes.txt', path: `${basePath}/notes.txt`, isDir: false, size: 1234, mode: 0o644, modTime: now - 3600 },
-      { name: 'backup.tar.gz', path: `${basePath}/backup.tar.gz`, isDir: false, size: 52428800, mode: 0o644, modTime: now - 86400 },
-      { name: 'screenshot.png', path: `${basePath}/screenshot.png`, isDir: false, size: 245678, mode: 0o644, modTime: now - 7200 },
-    ]
-  } else if (basePath === '/etc' || basePath === '/etc/') {
-    files.value = [
-      { name: 'nginx', path: '/etc/nginx', isDir: true, size: 0, mode: 0o755, modTime: now - 86400 },
-      { name: 'ssh', path: '/etc/ssh', isDir: true, size: 0, mode: 0o755, modTime: now - 86400 * 7 },
-      { name: 'passwd', path: '/etc/passwd', isDir: false, size: 2456, mode: 0o644, modTime: now - 86400 * 3 },
-      { name: 'hosts', path: '/etc/hosts', isDir: false, size: 234, mode: 0o644, modTime: now - 86400 * 30 },
-      { name: 'fstab', path: '/etc/fstab', isDir: false, size: 512, mode: 0o644, modTime: now - 86400 * 60 },
-      { name: 'hostname', path: '/etc/hostname', isDir: false, size: 12, mode: 0o644, modTime: now - 86400 * 90 },
-    ]
-  } else if (basePath === '/var' || basePath === '/var/') {
-    files.value = [
-      { name: 'log', path: '/var/log', isDir: true, size: 0, mode: 0o755, modTime: now - 60 },
-      { name: 'www', path: '/var/www', isDir: true, size: 0, mode: 0o755, modTime: now - 3600 },
-      { name: 'lib', path: '/var/lib', isDir: true, size: 0, mode: 0o755, modTime: now - 86400 },
-      { name: 'cache', path: '/var/cache', isDir: true, size: 0, mode: 0o755, modTime: now - 7200 },
-    ]
-  } else if (basePath === '/var/log' || basePath === '/var/log/') {
-    files.value = [
-      { name: 'syslog', path: '/var/log/syslog', isDir: false, size: 15728640, mode: 0o644, modTime: now - 60 },
-      { name: 'auth.log', path: '/var/log/auth.log', isDir: false, size: 524288, mode: 0o640, modTime: now - 120 },
-      { name: 'nginx', path: '/var/log/nginx', isDir: true, size: 0, mode: 0o755, modTime: now - 60 },
-      { name: 'mysql', path: '/var/log/mysql', isDir: true, size: 0, mode: 0o755, modTime: now - 3600 },
-      { name: 'dmesg', path: '/var/log/dmesg', isDir: false, size: 65536, mode: 0o644, modTime: now - 86400 },
-    ]
-  } else {
-    files.value = [
-      { name: 'example.txt', path: `${basePath}/example.txt`, isDir: false, size: 1024, mode: 0o644, modTime: now - 3600 },
-    ]
-  }
-
-  // 排序：目录在前
-  files.value.sort((a, b) => {
-    if (a.isDir && !b.isDir) return -1
-    if (!a.isDir && b.isDir) return 1
-    return a.name.localeCompare(b.name)
-  })
-}
-
 watch(selectedServer, (newVal) => {
   if (newVal) {
     currentPath.value = ''
@@ -1295,33 +1226,36 @@ function searchFiles() {
 
 // 文件内容搜索
 async function searchFileContent() {
-  if (!searchQuery.value.trim()) return
+  if (!searchQuery.value.trim() || !selectedServer.value) return
   isSearchingContent.value = true
   contentSearchResults.value = []
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 500))
-    // 模拟内容搜索结果
     const query = searchQuery.value.toLowerCase()
     const results: { file: FileItem; matches: string[] }[] = []
 
-    files.value.forEach(file => {
+    // 遍历当前目录下的文件，读取内容并搜索
+    for (const file of files.value) {
       if (!file.isDir) {
-        const content = generateSimulatedFileContent(file)
-        const lines = content.split('\n')
-        const matches: string[] = []
+        try {
+          const content = await readFileContent(file)
+          const lines = content.split('\n')
+          const matches: string[] = []
 
-        lines.forEach((line, index) => {
-          if (line.toLowerCase().includes(query)) {
-            matches.push(`${index + 1}: ${line.trim().substring(0, 100)}`)
+          lines.forEach((line, index) => {
+            if (line.toLowerCase().includes(query)) {
+              matches.push(`${index + 1}: ${line.trim().substring(0, 100)}`)
+            }
+          })
+
+          if (matches.length > 0) {
+            results.push({ file, matches })
           }
-        })
-
-        if (matches.length > 0) {
-          results.push({ file, matches })
+        } catch {
+          // 跳过无法读取的文件（如二进制文件）
         }
       }
-    })
+    }
 
     contentSearchResults.value = results
     if (results.length > 0) {
@@ -1450,8 +1384,8 @@ async function compareSelectedFiles() {
 
   try {
     // 获取两个文件的内容
-    const contentA = generateSimulatedFileContent(fileA)
-    const contentB = generateSimulatedFileContent(fileB)
+    const contentA = await readFileContent(fileA)
+    const contentB = await readFileContent(fileB)
 
     compareFileA.value = { file: fileA, content: contentA }
     compareFileB.value = { file: fileB, content: contentB }
@@ -1506,10 +1440,27 @@ function toggleFileSelection(file: FileItem) {
 
 // 文件查看/编辑
 async function viewFile(file: FileItem) {
+  if (!selectedServer.value) return
+  
   try {
     currentFile.value = file
-    // 模拟文件内容
-    fileContent.value = generateSimulatedFileContent(file)
+    // 调用真实 API 读取文件内容
+    const result = await window.electronAPI.file.read(selectedServer.value, file.path)
+    // 将 Buffer 转换为字符串
+    if (result.content) {
+      if (typeof result.content === 'string') {
+        fileContent.value = result.content
+      } else if (result.content instanceof Uint8Array || ArrayBuffer.isView(result.content)) {
+        fileContent.value = new TextDecoder().decode(result.content)
+      } else if (typeof result.content === 'object' && result.content.data) {
+        // 处理序列化的 Buffer 对象 { type: 'Buffer', data: [...] }
+        fileContent.value = new TextDecoder().decode(new Uint8Array(result.content.data))
+      } else {
+        fileContent.value = String(result.content)
+      }
+    } else {
+      fileContent.value = ''
+    }
     editing.value = false
     showFileDialog.value = true
     // 添加到历史记录
@@ -1519,95 +1470,30 @@ async function viewFile(file: FileItem) {
   }
 }
 
-function generateSimulatedFileContent(file: FileItem): string {
-  const name = file.name.toLowerCase()
-
-  if (name === '.bashrc') {
-    return `# ~/.bashrc: executed by bash(1) for non-login shells.
-
-# If not running interactively, don't do anything
-case $- in
-    *i*) ;;
-      *) return;;
-esac
-
-# History settings
-HISTCONTROL=ignoreboth
-HISTSIZE=1000
-HISTFILESIZE=2000
-
-# Aliases
-alias ll='ls -alF'
-alias la='ls -A'
-alias l='ls -CF'
-alias grep='grep --color=auto'
-
-# Prompt
-PS1='\\[\\033[01;32m\\]\\u@\\h\\[\\033[00m\\]:\\[\\033[01;34m\\]\\w\\[\\033[00m\\]\\$ '
-
-export PATH="$HOME/bin:$PATH"
-`
-  }
-
-  if (name === 'hosts') {
-    return `127.0.0.1   localhost
-127.0.1.1   server-01
-
-# The following lines are desirable for IPv6 capable hosts
-::1     ip6-localhost ip6-loopback
-fe00::0 ip6-localnet
-ff00::0 ip6-mcastprefix
-ff02::1 ip6-allnodes
-ff02::2 ip6-allrouters
-`
-  }
-
-  if (name === 'passwd') {
-    return `root:x:0:0:root:/root:/bin/bash
-daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
-bin:x:2:2:bin:/bin:/usr/sbin/nologin
-sys:x:3:3:sys:/dev:/usr/sbin/nologin
-www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin
-nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
-admin:x:1000:1000:Admin User:/home/admin:/bin/bash
-`
-  }
-
-  if (name.endsWith('.log') || name === 'syslog') {
-    const lines: string[] = []
-    const now = new Date()
-    for (let i = 0; i < 50; i++) {
-      const time = new Date(now.getTime() - i * 60000)
-      const level = ['INFO', 'DEBUG', 'WARN', 'ERROR'][Math.floor(Math.random() * 4)]
-      lines.unshift(`${time.toISOString()} [${level}] System message ${i + 1}`)
+// 读取文件内容的辅助函数
+async function readFileContent(file: FileItem): Promise<string> {
+  if (!selectedServer.value) throw new Error('未选择服务器')
+  
+  const result = await window.electronAPI.file.read(selectedServer.value, file.path)
+  if (result.content) {
+    if (typeof result.content === 'string') {
+      return result.content
+    } else if (result.content instanceof Uint8Array || ArrayBuffer.isView(result.content)) {
+      return new TextDecoder().decode(result.content)
+    } else if (typeof result.content === 'object' && result.content.data) {
+      return new TextDecoder().decode(new Uint8Array(result.content.data))
+    } else {
+      return String(result.content)
     }
-    return lines.join('\n')
   }
-
-  if (name === 'notes.txt') {
-    return `# 服务器笔记
-
-## TODO
-- [ ] 更新 nginx 配置
-- [ ] 检查磁盘空间
-- [x] 安装 Docker
-
-## 重要信息
-- 数据库端口: 3306
-- Redis 端口: 6379
-- API 服务端口: 3000
-
-## 备注
-上次维护时间: 2024-01-20
-`
-  }
-
-  return `# ${file.name}\n\n文件内容示例...\n`
+  return ''
 }
 
 async function saveFile() {
+  if (!selectedServer.value || !currentFile.value) return
+  
   try {
-    await new Promise(resolve => setTimeout(resolve, 300))
+    await window.electronAPI.file.write(selectedServer.value, currentFile.value.path, fileContent.value)
     ElMessage.success('文件已保存')
     editing.value = false
   } catch (error) {
@@ -1616,31 +1502,43 @@ async function saveFile() {
 }
 
 async function deleteFile(file: FileItem) {
+  if (!selectedServer.value) return
+  
   try {
     await ElMessageBox.confirm(`确定要删除 ${file.name} 吗？`, '确认删除', {
       type: 'warning'
     })
-    await new Promise(resolve => setTimeout(resolve, 300))
+    await window.electronAPI.file.delete(selectedServer.value, file.path)
     files.value = files.value.filter(f => f.path !== file.path)
     ElMessage.success('已删除')
   } catch {
-    // 取消
+    // 取消或删除失败
   }
 }
 
 async function deleteSelected() {
-  if (selectedFiles.value.length === 0) return
+  if (selectedFiles.value.length === 0 || !selectedServer.value) return
   try {
     await ElMessageBox.confirm(
       `确定要删除选中的 ${selectedFiles.value.length} 个文件吗？`,
       '确认删除',
       { type: 'warning' }
     )
-    await new Promise(resolve => setTimeout(resolve, 500))
-    const paths = selectedFiles.value.map(f => f.path)
-    files.value = files.value.filter(f => !paths.includes(f.path))
+    // 逐个删除选中的文件
+    const deletedPaths: string[] = []
+    for (const file of selectedFiles.value) {
+      try {
+        await window.electronAPI.file.delete(selectedServer.value, file.path)
+        deletedPaths.push(file.path)
+      } catch (error) {
+        ElMessage.error(`删除 ${file.name} 失败: ${(error as Error).message}`)
+      }
+    }
+    files.value = files.value.filter(f => !deletedPaths.includes(f.path))
     selectedFiles.value = []
-    ElMessage.success('已删除')
+    if (deletedPaths.length > 0) {
+      ElMessage.success(`已删除 ${deletedPaths.length} 个文件`)
+    }
   } catch {
     // 取消
   }
@@ -1648,30 +1546,30 @@ async function deleteSelected() {
 
 // 新建文件夹
 async function createFolder() {
-  if (!newFolderName.value.trim()) {
+  if (!newFolderName.value.trim() || !selectedServer.value) {
     ElMessage.warning('请输入文件夹名称')
     return
   }
   try {
-    await new Promise(resolve => setTimeout(resolve, 300))
     const basePath = currentPath.value || ''
-    const newFolder: FileItem = {
-      name: newFolderName.value,
-      path: `${basePath}/${newFolderName.value}`,
-      isDir: true,
-      size: 0,
-      mode: 0o755,
-      modTime: Math.floor(Date.now() / 1000)
+    const folderPath = `${basePath}/${newFolderName.value}`.replace(/\/+/g, '/')
+    
+    // 通过执行命令创建目录
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value, 
+      'mkdir', 
+      ['-p', folderPath]
+    )
+    
+    if (result.exit_code !== 0) {
+      throw new Error(result.stderr || '创建目录失败')
     }
-    files.value.unshift(newFolder)
-    files.value.sort((a, b) => {
-      if (a.isDir && !b.isDir) return -1
-      if (!a.isDir && b.isDir) return 1
-      return a.name.localeCompare(b.name)
-    })
+    
     showNewFolderDialog.value = false
     newFolderName.value = ''
     ElMessage.success('文件夹已创建')
+    // 刷新目录列表
+    await loadDirectory()
   } catch (error) {
     ElMessage.error(`创建失败: ${(error as Error).message}`)
   }
@@ -1679,30 +1577,22 @@ async function createFolder() {
 
 // 新建文件
 async function createFile() {
-  if (!newFileName.value.trim()) {
+  if (!newFileName.value.trim() || !selectedServer.value) {
     ElMessage.warning('请输入文件名称')
     return
   }
   try {
-    await new Promise(resolve => setTimeout(resolve, 300))
     const basePath = currentPath.value || ''
-    const newFile: FileItem = {
-      name: newFileName.value,
-      path: `${basePath}/${newFileName.value}`,
-      isDir: false,
-      size: 0,
-      mode: 0o644,
-      modTime: Math.floor(Date.now() / 1000)
-    }
-    files.value.push(newFile)
-    files.value.sort((a, b) => {
-      if (a.isDir && !b.isDir) return -1
-      if (!a.isDir && b.isDir) return 1
-      return a.name.localeCompare(b.name)
-    })
+    const filePath = `${basePath}/${newFileName.value}`.replace(/\/+/g, '/')
+    
+    // 通过 API 创建空文件
+    await window.electronAPI.file.write(selectedServer.value, filePath, '')
+    
     showNewFileDialog.value = false
     newFileName.value = ''
     ElMessage.success('文件已创建')
+    // 刷新目录列表
+    await loadDirectory()
   } catch (error) {
     ElMessage.error(`创建失败: ${(error as Error).message}`)
   }
@@ -1716,38 +1606,46 @@ function handleUploadChange(file: UploadFile) {
 }
 
 async function uploadFiles() {
-  if (uploadFileList.value.length === 0) {
+  if (uploadFileList.value.length === 0 || !selectedServer.value) {
     ElMessage.warning('请选择要上传的文件')
     return
   }
   uploading.value = true
   uploadProgress.value = 0
+  uploadProgressText.value = '准备上传...'
+  
   try {
-    for (let i = 0; i < uploadFileList.value.length; i++) {
-      await new Promise(resolve => setTimeout(resolve, 500))
-      uploadProgress.value = Math.round(((i + 1) / uploadFileList.value.length) * 100)
+    const basePath = currentPath.value || '/'
+    const totalFiles = uploadFileList.value.length
+    
+    for (let i = 0; i < totalFiles; i++) {
+      const file = uploadFileList.value[i]
+      const remotePath = `${basePath}/${file.name}`.replace(/\/+/g, '/')
+      
+      uploadProgressText.value = `上传 ${file.name} (${i + 1}/${totalFiles})`
+      
+      // 读取文件内容
+      if (file.raw) {
+        const arrayBuffer = await file.raw.arrayBuffer()
+        const data = new Uint8Array(arrayBuffer)
+        
+        // 上传文件
+        await window.electronAPI.file.uploadStream(selectedServer.value, data, remotePath, {
+          mode: 0o644,
+          createDirs: true
+        })
+      }
+      
+      uploadProgress.value = Math.round(((i + 1) / totalFiles) * 100)
     }
-    // 添加上传的文件到列表
-    const basePath = currentPath.value || ''
-    uploadFileList.value.forEach(f => {
-      files.value.push({
-        name: f.name,
-        path: `${basePath}/${f.name}`,
-        isDir: false,
-        size: f.size || 0,
-        mode: 0o644,
-        modTime: Math.floor(Date.now() / 1000)
-      })
-    })
-    files.value.sort((a, b) => {
-      if (a.isDir && !b.isDir) return -1
-      if (!a.isDir && b.isDir) return 1
-      return a.name.localeCompare(b.name)
-    })
+    
     showUploadDialog.value = false
     uploadFileList.value = []
     uploadProgress.value = 0
+    uploadProgressText.value = ''
     ElMessage.success('上传完成')
+    // 刷新目录列表
+    await loadDirectory()
   } catch (error) {
     ElMessage.error(`上传失败: ${(error as Error).message}`)
   } finally {
@@ -1999,20 +1897,30 @@ function handleFileAction(command: string, file: FileItem) {
 
 // 重命名
 async function renameFile() {
-  if (!renameNewName.value.trim() || !renameTarget.value) {
+  if (!renameNewName.value.trim() || !renameTarget.value || !selectedServer.value) {
     ElMessage.warning('请输入新名称')
     return
   }
   try {
-    await new Promise(resolve => setTimeout(resolve, 300))
-    const file = files.value.find(f => f.path === renameTarget.value!.path)
-    if (file) {
-      const basePath = currentPath.value || ''
-      file.name = renameNewName.value
-      file.path = `${basePath}/${renameNewName.value}`
+    const basePath = currentPath.value || ''
+    const oldPath = renameTarget.value.path
+    const newPath = `${basePath}/${renameNewName.value}`.replace(/\/+/g, '/')
+    
+    // 通过执行 mv 命令重命名
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'mv',
+      [oldPath, newPath]
+    )
+    
+    if (result.exit_code !== 0) {
+      throw new Error(result.stderr || '重命名失败')
     }
+    
     showRenameDialog.value = false
     ElMessage.success('重命名成功')
+    // 刷新目录列表
+    await loadDirectory()
   } catch (error) {
     ElMessage.error(`重命名失败: ${(error as Error).message}`)
   }
@@ -2035,15 +1943,23 @@ function updateChmodCheckboxes(mode: number) {
 }
 
 async function changePermission() {
-  if (!chmodTarget.value) return
+  if (!chmodTarget.value || !selectedServer.value) return
   try {
-    await new Promise(resolve => setTimeout(resolve, 300))
-    const file = files.value.find(f => f.path === chmodTarget.value!.path)
-    if (file) {
-      file.mode = parseInt(chmodValue.value, 8)
+    // 通过执行 chmod 命令修改权限
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'chmod',
+      [chmodValue.value, chmodTarget.value.path]
+    )
+    
+    if (result.exit_code !== 0) {
+      throw new Error(result.stderr || '修改权限失败')
     }
+    
     showChmodDialog.value = false
     ElMessage.success('权限已修改')
+    // 刷新目录列表
+    await loadDirectory()
   } catch (error) {
     ElMessage.error(`修改失败: ${(error as Error).message}`)
   }
@@ -2051,17 +1967,32 @@ async function changePermission() {
 
 // 移动/复制
 async function moveOrCopyFile() {
-  if (!moveTarget.value || !moveTargetPath.value) {
+  if (!moveTarget.value || !moveTargetPath.value || !selectedServer.value) {
     ElMessage.warning('请输入目标路径')
     return
   }
   try {
-    await new Promise(resolve => setTimeout(resolve, 300))
-    if (moveMode.value === 'move') {
-      files.value = files.value.filter(f => f.path !== moveTarget.value!.path)
+    const sourcePath = moveTarget.value.path
+    const targetPath = `${moveTargetPath.value}/${moveTarget.value.name}`.replace(/\/+/g, '/')
+    
+    // 通过执行 mv 或 cp 命令
+    const command = moveMode.value === 'move' ? 'mv' : 'cp'
+    const args = moveMode.value === 'move' ? [sourcePath, targetPath] : ['-r', sourcePath, targetPath]
+    
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      command,
+      args
+    )
+    
+    if (result.exit_code !== 0) {
+      throw new Error(result.stderr || '操作失败')
     }
+    
     showMoveDialog.value = false
     ElMessage.success(moveMode.value === 'move' ? '移动成功' : '复制成功')
+    // 刷新目录列表
+    await loadDirectory()
   } catch (error) {
     ElMessage.error(`操作失败: ${(error as Error).message}`)
   }
@@ -2248,50 +2179,82 @@ function isClipboardFile(file: FileItem): boolean {
 }
 
 async function pasteFiles() {
-  if (clipboard.value.files.length === 0) return
+  if (clipboard.value.files.length === 0 || !selectedServer.value) return
   try {
-    await new Promise(resolve => setTimeout(resolve, 500))
-    const basePath = currentPath.value || ''
-
-    // 添加粘贴的文件到当前目录
-    clipboard.value.files.forEach(f => {
-      const newFile: FileItem = {
-        ...f,
-        path: `${basePath}/${f.name}`
+    const basePath = currentPath.value || '/'
+    const command = clipboard.value.mode === 'cut' ? 'mv' : 'cp'
+    
+    for (const file of clipboard.value.files) {
+      const targetPath = `${basePath}/${file.name}`.replace(/\/+/g, '/')
+      const args = clipboard.value.mode === 'cut' 
+        ? [file.path, targetPath] 
+        : ['-r', file.path, targetPath]
+      
+      const result = await window.electronAPI.server.executeCommand(
+        selectedServer.value,
+        command,
+        args
+      )
+      
+      if (result.exit_code !== 0) {
+        throw new Error(result.stderr || `${clipboard.value.mode === 'cut' ? '移动' : '复制'} ${file.name} 失败`)
       }
-      // 检查是否已存在同名文件
-      const existingIndex = files.value.findIndex(ef => ef.name === f.name)
-      if (existingIndex >= 0) {
-        files.value[existingIndex] = newFile
-      } else {
-        files.value.push(newFile)
-      }
-    })
-
-    // 如果是剪切，从源目录移除
-    if (clipboard.value.mode === 'cut' && clipboard.value.sourcePath !== currentPath.value) {
-      // 模拟移除源文件
     }
-
-    files.value.sort((a, b) => {
-      if (a.isDir && !b.isDir) return -1
-      if (!a.isDir && b.isDir) return 1
-      return a.name.localeCompare(b.name)
-    })
 
     ElMessage.success(`已粘贴 ${clipboard.value.files.length} 个文件`)
     clearClipboard()
+    // 刷新目录列表
+    await loadDirectory()
   } catch (error) {
     ElMessage.error(`粘贴失败: ${(error as Error).message}`)
   }
 }
 
 // 图片预览
-function previewImage(file: FileItem) {
+async function previewImage(file: FileItem) {
+  if (!selectedServer.value) return
+  
   currentFile.value = file
-  // 模拟图片URL
-  previewImageUrl.value = `https://picsum.photos/800/600?random=${Math.random()}`
-  showImagePreview.value = true
+  try {
+    // 通过 API 读取图片文件内容
+    const result = await window.electronAPI.file.read(selectedServer.value, file.path)
+    if (result.content) {
+      let imageData: Uint8Array
+      if (result.content instanceof Uint8Array) {
+        imageData = result.content
+      } else if (ArrayBuffer.isView(result.content)) {
+        imageData = new Uint8Array(result.content.buffer)
+      } else if (typeof result.content === 'object' && result.content.data) {
+        // 处理序列化的 Buffer 对象 { type: 'Buffer', data: [...] }
+        imageData = new Uint8Array(result.content.data)
+      } else {
+        throw new Error('无法解析图片数据')
+      }
+      
+      // 根据文件扩展名确定 MIME 类型
+      const ext = file.name.split('.').pop()?.toLowerCase() || ''
+      const mimeTypes: Record<string, string> = {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'gif': 'image/gif',
+        'webp': 'image/webp',
+        'bmp': 'image/bmp',
+        'svg': 'image/svg+xml',
+        'ico': 'image/x-icon'
+      }
+      const mimeType = mimeTypes[ext] || 'image/png'
+      
+      // 将二进制数据转换为 base64
+      const base64 = btoa(
+        imageData.reduce((data, byte) => data + String.fromCharCode(byte), '')
+      )
+      previewImageUrl.value = `data:${mimeType};base64,${base64}`
+      showImagePreview.value = true
+    }
+  } catch (error) {
+    ElMessage.error(`加载图片失败: ${(error as Error).message}`)
+  }
 }
 
 // 压缩功能
@@ -2309,32 +2272,50 @@ function removeCompressFile(file: FileItem) {
 }
 
 async function doCompress() {
-  if (!compressFileName.value.trim()) {
+  if (!compressFileName.value.trim() || !selectedServer.value) {
     ElMessage.warning('请输入压缩文件名')
     return
   }
   compressing.value = true
   try {
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    const basePath = currentPath.value || ''
+    const basePath = currentPath.value || '/'
     const archiveName = compressFileName.value + compressFormat.value
-    files.value.push({
-      name: archiveName,
-      path: `${basePath}/${archiveName}`,
-      isDir: false,
-      size: compressFiles.value.reduce((sum, f) => sum + f.size, 0) * 0.7,
-      mode: 0o644,
-      modTime: Math.floor(Date.now() / 1000)
-    })
-    files.value.sort((a, b) => {
-      if (a.isDir && !b.isDir) return -1
-      if (!a.isDir && b.isDir) return 1
-      return a.name.localeCompare(b.name)
-    })
+    const archivePath = `${basePath}/${archiveName}`.replace(/\/+/g, '/')
+    const filePaths = compressFiles.value.map(f => f.path)
+    
+    // 根据压缩格式选择命令
+    let command: string
+    let args: string[]
+    
+    if (compressFormat.value === '.tar.gz') {
+      command = 'tar'
+      args = ['-czf', archivePath, ...filePaths]
+    } else if (compressFormat.value === '.zip') {
+      command = 'zip'
+      args = ['-r', archivePath, ...filePaths]
+    } else if (compressFormat.value === '.tar') {
+      command = 'tar'
+      args = ['-cf', archivePath, ...filePaths]
+    } else {
+      throw new Error('不支持的压缩格式')
+    }
+    
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      command,
+      args
+    )
+    
+    if (result.exit_code !== 0) {
+      throw new Error(result.stderr || '压缩失败')
+    }
+    
     showCompressDialog.value = false
     compressFiles.value = []
     compressFileName.value = ''
     ElMessage.success('压缩完成')
+    // 刷新目录列表
+    await loadDirectory()
   } catch (error) {
     ElMessage.error(`压缩失败: ${(error as Error).message}`)
   } finally {
@@ -2344,13 +2325,57 @@ async function doCompress() {
 
 // 解压功能
 async function doExtract() {
-  if (!extractTargetPath.value.trim()) {
+  if (!extractTargetPath.value.trim() || !selectedServer.value || !currentFile.value) {
     ElMessage.warning('请输入目标路径')
     return
   }
   extracting.value = true
   try {
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    const archivePath = currentFile.value.path
+    const targetPath = extractTargetPath.value
+    const fileName = currentFile.value.name.toLowerCase()
+    
+    // 先创建目标目录
+    await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      'mkdir',
+      ['-p', targetPath]
+    )
+    
+    // 根据文件类型选择解压命令
+    let command: string
+    let args: string[]
+    
+    if (fileName.endsWith('.tar.gz') || fileName.endsWith('.tgz')) {
+      command = 'tar'
+      args = ['-xzf', archivePath, '-C', targetPath]
+    } else if (fileName.endsWith('.tar.bz2')) {
+      command = 'tar'
+      args = ['-xjf', archivePath, '-C', targetPath]
+    } else if (fileName.endsWith('.tar')) {
+      command = 'tar'
+      args = ['-xf', archivePath, '-C', targetPath]
+    } else if (fileName.endsWith('.zip')) {
+      command = 'unzip'
+      args = extractOverwrite.value ? ['-o', archivePath, '-d', targetPath] : [archivePath, '-d', targetPath]
+    } else if (fileName.endsWith('.gz')) {
+      command = 'gunzip'
+      args = ['-c', archivePath]
+      // gunzip 需要重定向输出
+    } else {
+      throw new Error('不支持的压缩格式')
+    }
+    
+    const result = await window.electronAPI.server.executeCommand(
+      selectedServer.value,
+      command,
+      args
+    )
+    
+    if (result.exit_code !== 0) {
+      throw new Error(result.stderr || '解压失败')
+    }
+    
     showExtractDialog.value = false
     extractTargetPath.value = ''
     ElMessage.success('解压完成')

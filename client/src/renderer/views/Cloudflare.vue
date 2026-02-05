@@ -276,8 +276,11 @@ import { ArrowLeft, Refresh, Search, Plus, Setting } from '@element-plus/icons-v
 
 const route = useRoute()
 
+// Cloudflare API 基础 URL
+const CF_API_BASE = 'https://api.cloudflare.com/client/v4'
+
 interface Zone { id: string; name: string; status: string }
-interface DnsRecord { id: string; type: string; name: string; content: string; ttl: number; proxied: boolean }
+interface DnsRecord { id: string; type: string; name: string; content: string; ttl: number; proxied: boolean; priority?: number }
 interface Tunnel { id: string; name: string; status: string; connections: number; created_at: string }
 
 const loading = ref(false)
@@ -318,7 +321,7 @@ const apiSettings = ref({
 })
 
 const dnsTypes = ['A', 'AAAA', 'CNAME', 'TXT', 'MX', 'NS', 'SRV', 'CAA']
-const dnsForm = ref({ type: 'A', name: '', content: '', ttl: 1, proxied: true })
+const dnsForm = ref({ type: 'A', name: '', content: '', ttl: 1, proxied: true, priority: 10 })
 const tunnelForm = ref({ name: '' })
 
 const filteredDnsRecords = computed(() => {
@@ -333,58 +336,152 @@ const apiConfigured = computed(() => {
   return !!apiSettings.value.apiToken
 })
 
-onMounted(() => {
+// Cloudflare API 请求封装
+async function cfRequest<T>(endpoint: string, options: {
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+  body?: object
+} = {}): Promise<{ success: boolean; result?: T; errors?: any[]; messages?: any[] }> {
+  if (!apiSettings.value.apiToken) {
+    throw new Error('API Token 未配置')
+  }
+
+  const response = await window.electronAPI.http.request({
+    url: `${CF_API_BASE}${endpoint}`,
+    method: options.method || 'GET',
+    headers: {
+      'Authorization': `Bearer ${apiSettings.value.apiToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: options.body,
+    timeout: 30000
+  })
+
+  if (!response.success) {
+    throw new Error(response.error || `HTTP ${response.status}: ${response.statusText}`)
+  }
+
+  const data = response.data
+  if (!data.success) {
+    const errorMsg = data.errors?.map((e: any) => e.message).join(', ') || '请求失败'
+    throw new Error(errorMsg)
+  }
+
+  return data
+}
+
+onMounted(async () => {
   // Handle tab query parameter
   const tab = route.query.tab as string
   if (tab && ['dns', 'ssl', 'cache', 'tunnel'].includes(tab)) {
     activeTab.value = tab
   }
-  // 从 localStorage 加载已保存的 API 设置
-  const saved = localStorage.getItem('cloudflare_api_settings')
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved)
-      apiSettings.value = { ...apiSettings.value, ...parsed }
-    } catch (e) {
-      console.error('Failed to parse saved API settings:', e)
-    }
-  }
+  // 从安全存储加载 API 设置
+  await loadApiSettings()
   // 只有配置了 API 才加载数据
   if (apiConfigured.value) {
     loadZones()
   }
 })
 
+async function loadApiSettings() {
+  try {
+    const tokenResult = await window.electronAPI.secure.getCredential('cloudflare_api_token')
+    const accountResult = await window.electronAPI.secure.getCredential('cloudflare_account_id')
+    
+    if (tokenResult.success && tokenResult.value) {
+      apiSettings.value.apiToken = tokenResult.value
+    }
+    if (accountResult.success && accountResult.value) {
+      apiSettings.value.accountId = accountResult.value
+    }
+  } catch (e) {
+    console.error('Failed to load API settings:', e)
+  }
+}
+
 async function loadZones() {
   loading.value = true
   try {
-    // 模拟 API 调用 - 实际应通过 IPC 调用主进程
-    zones.value = [
-      { id: 'zone1', name: 'example.com', status: 'active' },
-      { id: 'zone2', name: 'mysite.io', status: 'active' }
-    ]
+    const response = await cfRequest<Zone[]>('/zones')
+    zones.value = response.result || []
     if (zones.value.length > 0) {
       selectedZone.value = zones.value[0].id
       await loadZoneData()
     }
-  } finally { loading.value = false }
+  } catch (error) {
+    ElMessage.error(`加载域名列表失败: ${(error as Error).message}`)
+  } finally {
+    loading.value = false
+  }
 }
 
 async function loadZoneData() {
   if (!selectedZone.value) return
   loading.value = true
   try {
-    // 模拟加载 DNS 记录
-    dnsRecords.value = [
-      { id: '1', type: 'A', name: 'example.com', content: '192.168.1.1', ttl: 1, proxied: true },
-      { id: '2', type: 'CNAME', name: 'www.example.com', content: 'example.com', ttl: 1, proxied: true },
-      { id: '3', type: 'MX', name: 'example.com', content: 'mail.example.com', ttl: 3600, proxied: false },
-      { id: '4', type: 'TXT', name: 'example.com', content: 'v=spf1 include:_spf.google.com ~all', ttl: 3600, proxied: false }
-    ]
-    tunnels.value = [
-      { id: 't1', name: 'my-tunnel', status: 'healthy', connections: 2, created_at: '2024-01-15T10:30:00Z' }
-    ]
-  } finally { loading.value = false }
+    await Promise.all([
+      loadDnsRecords(),
+      loadZoneSettings(),
+      loadTunnels()
+    ])
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadDnsRecords() {
+  try {
+    const response = await cfRequest<DnsRecord[]>(`/zones/${selectedZone.value}/dns_records?per_page=100`)
+    dnsRecords.value = response.result || []
+  } catch (error) {
+    ElMessage.error(`加载 DNS 记录失败: ${(error as Error).message}`)
+  }
+}
+
+async function loadZoneSettings() {
+  try {
+    // 加载 SSL 设置
+    const sslResponse = await cfRequest<{ value: string }>(`/zones/${selectedZone.value}/settings/ssl`)
+    sslMode.value = sslResponse.result?.value || 'full'
+
+    // 加载 Always HTTPS 设置
+    const httpsResponse = await cfRequest<{ value: string }>(`/zones/${selectedZone.value}/settings/always_use_https`)
+    alwaysHttps.value = httpsResponse.result?.value === 'on'
+
+    // 加载最低 TLS 版本
+    const tlsResponse = await cfRequest<{ value: string }>(`/zones/${selectedZone.value}/settings/min_tls_version`)
+    minTlsVersion.value = tlsResponse.result?.value || '1.2'
+
+    // 加载缓存级别
+    const cacheResponse = await cfRequest<{ value: string }>(`/zones/${selectedZone.value}/settings/cache_level`)
+    cacheLevel.value = cacheResponse.result?.value || 'aggressive'
+
+    // 加载浏览器缓存 TTL
+    const ttlResponse = await cfRequest<{ value: number }>(`/zones/${selectedZone.value}/settings/browser_cache_ttl`)
+    browserTtl.value = ttlResponse.result?.value || 0
+  } catch (error) {
+    console.error('加载区域设置失败:', error)
+  }
+}
+
+async function loadTunnels() {
+  if (!apiSettings.value.accountId) {
+    tunnels.value = []
+    return
+  }
+  try {
+    const response = await cfRequest<any[]>(`/accounts/${apiSettings.value.accountId}/cfd_tunnel`)
+    tunnels.value = (response.result || []).map(t => ({
+      id: t.id,
+      name: t.name,
+      status: t.status === 'healthy' ? 'healthy' : 'inactive',
+      connections: t.connections?.length || 0,
+      created_at: t.created_at
+    }))
+  } catch (error) {
+    console.error('加载 Tunnel 失败:', error)
+    tunnels.value = []
+  }
 }
 
 function refreshData() { loadZoneData() }
@@ -407,13 +504,13 @@ function getContentPlaceholder(type: string) {
 
 function showAddDnsDialog() {
   editingDns.value = null
-  dnsForm.value = { type: 'A', name: '', content: '', ttl: 1, proxied: true }
+  dnsForm.value = { type: 'A', name: '', content: '', ttl: 1, proxied: true, priority: 10 }
   dnsDialogVisible.value = true
 }
 
 function editDnsRecord(record: DnsRecord) {
   editingDns.value = record
-  dnsForm.value = { ...record }
+  dnsForm.value = { ...record, priority: record.priority || 10 }
   dnsDialogVisible.value = true
 }
 
@@ -424,42 +521,144 @@ async function saveDnsRecord() {
   }
   saving.value = true
   try {
-    // 模拟 API 调用
-    await new Promise(r => setTimeout(r, 500))
+    const body: any = {
+      type: dnsForm.value.type,
+      name: dnsForm.value.name,
+      content: dnsForm.value.content,
+      ttl: dnsForm.value.ttl,
+      proxied: canProxy(dnsForm.value.type) ? dnsForm.value.proxied : false
+    }
+    
+    // MX 和 SRV 记录需要 priority
+    if (['MX', 'SRV'].includes(dnsForm.value.type)) {
+      body.priority = dnsForm.value.priority || 10
+    }
+
     if (editingDns.value) {
-      Object.assign(editingDns.value, dnsForm.value)
+      // 更新记录
+      await cfRequest(`/zones/${selectedZone.value}/dns_records/${editingDns.value.id}`, {
+        method: 'PATCH',
+        body
+      })
       ElMessage.success('DNS 记录已更新')
     } else {
-      dnsRecords.value.push({ id: Date.now().toString(), ...dnsForm.value })
+      // 创建记录
+      await cfRequest(`/zones/${selectedZone.value}/dns_records`, {
+        method: 'POST',
+        body
+      })
       ElMessage.success('DNS 记录已添加')
     }
     dnsDialogVisible.value = false
-  } finally { saving.value = false }
+    await loadDnsRecords()
+  } catch (error) {
+    ElMessage.error(`保存失败: ${(error as Error).message}`)
+  } finally {
+    saving.value = false
+  }
 }
 
 async function deleteDnsRecord(record: DnsRecord) {
   await ElMessageBox.confirm(`确定删除 ${record.name} 的 ${record.type} 记录吗？`, '确认删除')
-  dnsRecords.value = dnsRecords.value.filter(r => r.id !== record.id)
-  ElMessage.success('DNS 记录已删除')
+  try {
+    await cfRequest(`/zones/${selectedZone.value}/dns_records/${record.id}`, {
+      method: 'DELETE'
+    })
+    ElMessage.success('DNS 记录已删除')
+    await loadDnsRecords()
+  } catch (error) {
+    ElMessage.error(`删除失败: ${(error as Error).message}`)
+  }
 }
 
 async function updateDnsProxy(record: DnsRecord) {
-  ElMessage.success(`${record.name} 代理状态已${record.proxied ? '开启' : '关闭'}`)
+  try {
+    await cfRequest(`/zones/${selectedZone.value}/dns_records/${record.id}`, {
+      method: 'PATCH',
+      body: { proxied: record.proxied }
+    })
+    ElMessage.success(`${record.name} 代理状态已${record.proxied ? '开启' : '关闭'}`)
+  } catch (error) {
+    // 恢复原状态
+    record.proxied = !record.proxied
+    ElMessage.error(`更新失败: ${(error as Error).message}`)
+  }
 }
 
-function updateSslMode() { ElMessage.success(`SSL 模式已更新为 ${sslMode.value}`) }
-function updateAlwaysHttps() { ElMessage.success(`始终使用 HTTPS 已${alwaysHttps.value ? '开启' : '关闭'}`) }
-function updateMinTls() { ElMessage.success(`最低 TLS 版本已更新为 ${minTlsVersion.value}`) }
-function updateCacheLevel() { ElMessage.success('缓存级别已更新') }
-function updateBrowserTtl() { ElMessage.success('浏览器缓存 TTL 已更新') }
+async function updateSslMode() {
+  try {
+    await cfRequest(`/zones/${selectedZone.value}/settings/ssl`, {
+      method: 'PATCH',
+      body: { value: sslMode.value }
+    })
+    ElMessage.success(`SSL 模式已更新为 ${sslMode.value}`)
+  } catch (error) {
+    ElMessage.error(`更新失败: ${(error as Error).message}`)
+  }
+}
+
+async function updateAlwaysHttps() {
+  try {
+    await cfRequest(`/zones/${selectedZone.value}/settings/always_use_https`, {
+      method: 'PATCH',
+      body: { value: alwaysHttps.value ? 'on' : 'off' }
+    })
+    ElMessage.success(`始终使用 HTTPS 已${alwaysHttps.value ? '开启' : '关闭'}`)
+  } catch (error) {
+    ElMessage.error(`更新失败: ${(error as Error).message}`)
+  }
+}
+
+async function updateMinTls() {
+  try {
+    await cfRequest(`/zones/${selectedZone.value}/settings/min_tls_version`, {
+      method: 'PATCH',
+      body: { value: minTlsVersion.value }
+    })
+    ElMessage.success(`最低 TLS 版本已更新为 ${minTlsVersion.value}`)
+  } catch (error) {
+    ElMessage.error(`更新失败: ${(error as Error).message}`)
+  }
+}
+
+async function updateCacheLevel() {
+  try {
+    await cfRequest(`/zones/${selectedZone.value}/settings/cache_level`, {
+      method: 'PATCH',
+      body: { value: cacheLevel.value }
+    })
+    ElMessage.success('缓存级别已更新')
+  } catch (error) {
+    ElMessage.error(`更新失败: ${(error as Error).message}`)
+  }
+}
+
+async function updateBrowserTtl() {
+  try {
+    await cfRequest(`/zones/${selectedZone.value}/settings/browser_cache_ttl`, {
+      method: 'PATCH',
+      body: { value: browserTtl.value }
+    })
+    ElMessage.success('浏览器缓存 TTL 已更新')
+  } catch (error) {
+    ElMessage.error(`更新失败: ${(error as Error).message}`)
+  }
+}
 
 async function purgeAllCache() {
   await ElMessageBox.confirm('确定清除所有缓存吗？这可能会暂时影响网站性能。', '确认清除')
   purging.value = true
   try {
-    await new Promise(r => setTimeout(r, 1000))
+    await cfRequest(`/zones/${selectedZone.value}/purge_cache`, {
+      method: 'POST',
+      body: { purge_everything: true }
+    })
     ElMessage.success('所有缓存已清除')
-  } finally { purging.value = false }
+  } catch (error) {
+    ElMessage.error(`清除失败: ${(error as Error).message}`)
+  } finally {
+    purging.value = false
+  }
 }
 
 function showPurgeUrlDialog() {
@@ -474,13 +673,25 @@ async function purgeByUrls() {
   }
   purging.value = true
   try {
-    await new Promise(r => setTimeout(r, 500))
+    const files = purgeUrls.value.split('\n').map(u => u.trim()).filter(u => u)
+    await cfRequest(`/zones/${selectedZone.value}/purge_cache`, {
+      method: 'POST',
+      body: { files }
+    })
     ElMessage.success('指定 URL 缓存已清除')
     purgeUrlDialogVisible.value = false
-  } finally { purging.value = false }
+  } catch (error) {
+    ElMessage.error(`清除失败: ${(error as Error).message}`)
+  } finally {
+    purging.value = false
+  }
 }
 
 function showCreateTunnelDialog() {
+  if (!apiSettings.value.accountId) {
+    ElMessage.warning('请先在设置中配置账户 ID 以使用 Tunnel 功能')
+    return
+  }
   tunnelForm.value = { name: '' }
   tunnelDialogVisible.value = true
 }
@@ -490,19 +701,27 @@ async function createTunnel() {
     ElMessage.warning('请输入 Tunnel 名称')
     return
   }
+  if (!apiSettings.value.accountId) {
+    ElMessage.warning('请先配置账户 ID')
+    return
+  }
   saving.value = true
   try {
-    await new Promise(r => setTimeout(r, 500))
-    tunnels.value.push({
-      id: 't' + Date.now(),
-      name: tunnelForm.value.name,
-      status: 'inactive',
-      connections: 0,
-      created_at: new Date().toISOString()
+    await cfRequest(`/accounts/${apiSettings.value.accountId}/cfd_tunnel`, {
+      method: 'POST',
+      body: {
+        name: tunnelForm.value.name,
+        tunnel_secret: btoa(crypto.getRandomValues(new Uint8Array(32)).toString())
+      }
     })
     ElMessage.success('Tunnel 已创建')
     tunnelDialogVisible.value = false
-  } finally { saving.value = false }
+    await loadTunnels()
+  } catch (error) {
+    ElMessage.error(`创建失败: ${(error as Error).message}`)
+  } finally {
+    saving.value = false
+  }
 }
 
 function showTunnelConfig(tunnel: Tunnel) {
@@ -512,8 +731,15 @@ function showTunnelConfig(tunnel: Tunnel) {
 
 async function deleteTunnel(tunnel: Tunnel) {
   await ElMessageBox.confirm(`确定删除 Tunnel "${tunnel.name}" 吗？`, '确认删除')
-  tunnels.value = tunnels.value.filter(t => t.id !== tunnel.id)
-  ElMessage.success('Tunnel 已删除')
+  try {
+    await cfRequest(`/accounts/${apiSettings.value.accountId}/cfd_tunnel/${tunnel.id}`, {
+      method: 'DELETE'
+    })
+    ElMessage.success('Tunnel 已删除')
+    await loadTunnels()
+  } catch (error) {
+    ElMessage.error(`删除失败: ${(error as Error).message}`)
+  }
 }
 
 function getTunnelInstallCmd() {
@@ -531,16 +757,6 @@ function formatDate(dateStr: string) {
 
 // API 设置函数
 function showSettingsDialog() {
-  // 从 localStorage 加载已保存的设置
-  const saved = localStorage.getItem('cloudflare_api_settings')
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved)
-      apiSettings.value = { ...apiSettings.value, ...parsed }
-    } catch (e) {
-      console.error('Failed to parse saved API settings:', e)
-    }
-  }
   settingsDialogVisible.value = true
 }
 
@@ -551,22 +767,47 @@ async function saveApiSettings() {
   }
   saving.value = true
   try {
-    // 保存到 localStorage
-    localStorage.setItem('cloudflare_api_settings', JSON.stringify(apiSettings.value))
+    // 验证 API Token
+    const testResponse = await window.electronAPI.http.request({
+      url: `${CF_API_BASE}/user/tokens/verify`,
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiSettings.value.apiToken}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    })
+
+    if (!testResponse.success || !testResponse.data?.success) {
+      throw new Error('API 令牌验证失败，请检查令牌是否正确')
+    }
+
+    // 保存到安全存储
+    await window.electronAPI.secure.setCredential('cloudflare_api_token', apiSettings.value.apiToken)
+    if (apiSettings.value.accountId) {
+      await window.electronAPI.secure.setCredential('cloudflare_account_id', apiSettings.value.accountId)
+    }
+    
     ElMessage.success('API 设置已保存')
     settingsDialogVisible.value = false
     // 重新加载数据
     await loadZones()
+  } catch (error) {
+    ElMessage.error(`保存失败: ${(error as Error).message}`)
   } finally {
     saving.value = false
   }
 }
 
-function clearApiSettings() {
-  ElMessageBox.confirm('确定清除 API 配置吗？这将删除所有已保存的凭据。', '确认清除', {
-    type: 'warning'
-  }).then(() => {
-    localStorage.removeItem('cloudflare_api_settings')
+async function clearApiSettings() {
+  try {
+    await ElMessageBox.confirm('确定清除 API 配置吗？这将删除所有已保存的凭据。', '确认清除', {
+      type: 'warning'
+    })
+    
+    await window.electronAPI.secure.deleteCredential('cloudflare_api_token')
+    await window.electronAPI.secure.deleteCredential('cloudflare_account_id')
+    
     apiSettings.value = { apiToken: '', accountId: '' }
     zones.value = []
     dnsRecords.value = []
@@ -574,7 +815,9 @@ function clearApiSettings() {
     selectedZone.value = ''
     settingsDialogVisible.value = false
     ElMessage.success('API 配置已清除')
-  }).catch(() => {})
+  } catch {
+    // 用户取消
+  }
 }
 </script>
 

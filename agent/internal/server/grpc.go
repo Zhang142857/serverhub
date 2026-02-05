@@ -1,8 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -534,4 +538,168 @@ func (s *AgentServer) DownloadFile(req *pb.FileRequest, stream pb.AgentService_D
 			End: &pb.FileUploadEnd{},
 		},
 	})
+}
+
+// SearchDockerHub 搜索 Docker Hub 镜像（服务端代理）
+func (s *AgentServer) SearchDockerHub(ctx context.Context, req *pb.DockerSearchRequest) (*pb.DockerSearchResponse, error) {
+	if req.Query == "" {
+		return &pb.DockerSearchResponse{
+			Success: false,
+			Error:   "搜索关键词不能为空",
+		}, nil
+	}
+
+	pageSize := req.PageSize
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 25
+	}
+
+	page := req.Page
+	if page <= 0 {
+		page = 1
+	}
+
+	// 构建 Docker Hub API URL
+	url := fmt.Sprintf("https://hub.docker.com/v2/search/repositories/?query=%s&page_size=%d&page=%d",
+		req.Query, pageSize, page)
+
+	log.Info().Str("url", url).Str("query", req.Query).Msg("搜索 Docker Hub")
+
+	// 发起 HTTP 请求
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		log.Error().Err(err).Msg("Docker Hub 搜索请求失败")
+		return &pb.DockerSearchResponse{
+			Success: false,
+			Error:   "搜索请求失败: " + err.Error(),
+		}, nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return &pb.DockerSearchResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Docker Hub 返回错误状态码: %d", resp.StatusCode),
+		}, nil
+	}
+
+	// 解析响应
+	var result struct {
+		Count   int `json:"count"`
+		Results []struct {
+			RepoName         string `json:"repo_name"`
+			ShortDescription string `json:"short_description"`
+			StarCount        int64  `json:"star_count"`
+			IsOfficial       bool   `json:"is_official"`
+			IsAutomated      bool   `json:"is_automated"`
+			PullCount        int64  `json:"pull_count"`
+		} `json:"results"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Error().Err(err).Msg("解析 Docker Hub 响应失败")
+		return &pb.DockerSearchResponse{
+			Success: false,
+			Error:   "解析响应失败: " + err.Error(),
+		}, nil
+	}
+
+	// 转换结果
+	images := make([]*pb.DockerImage, 0, len(result.Results))
+	for _, r := range result.Results {
+		images = append(images, &pb.DockerImage{
+			Name:        r.RepoName,
+			Description: r.ShortDescription,
+			StarCount:   r.StarCount,
+			IsOfficial:  r.IsOfficial,
+			IsAutomated: r.IsAutomated,
+			PullCount:   r.PullCount,
+		})
+	}
+
+	log.Info().Int("count", len(images)).Msg("Docker Hub 搜索完成")
+
+	return &pb.DockerSearchResponse{
+		Success:    true,
+		Results:    images,
+		TotalCount: int32(result.Count),
+	}, nil
+}
+
+// ProxyHttpRequest 代理 HTTP 请求
+func (s *AgentServer) ProxyHttpRequest(ctx context.Context, req *pb.HttpProxyRequest) (*pb.HttpProxyResponse, error) {
+	if req.Url == "" {
+		return &pb.HttpProxyResponse{
+			Success: false,
+			Error:   "URL 不能为空",
+		}, nil
+	}
+
+	method := req.Method
+	if method == "" {
+		method = "GET"
+	}
+
+	timeout := time.Duration(req.TimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
+	log.Info().Str("url", req.Url).Str("method", method).Msg("代理 HTTP 请求")
+
+	// 创建请求
+	var bodyReader io.Reader
+	if len(req.Body) > 0 {
+		bodyReader = bytes.NewReader(req.Body)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, method, req.Url, bodyReader)
+	if err != nil {
+		return &pb.HttpProxyResponse{
+			Success: false,
+			Error:   "创建请求失败: " + err.Error(),
+		}, nil
+	}
+
+	// 设置请求头
+	for k, v := range req.Headers {
+		httpReq.Header.Set(k, v)
+	}
+
+	// 发起请求
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return &pb.HttpProxyResponse{
+			Success: false,
+			Error:   "请求失败: " + err.Error(),
+		}, nil
+	}
+	defer resp.Body.Close()
+
+	// 读取响应体
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return &pb.HttpProxyResponse{
+			Success: false,
+			Error:   "读取响应失败: " + err.Error(),
+		}, nil
+	}
+
+	// 转换响应头
+	headers := make(map[string]string)
+	for k, v := range resp.Header {
+		if len(v) > 0 {
+			headers[k] = v[0]
+		}
+	}
+
+	return &pb.HttpProxyResponse{
+		Success:    resp.StatusCode >= 200 && resp.StatusCode < 300,
+		StatusCode: int32(resp.StatusCode),
+		StatusText: resp.Status,
+		Headers:    headers,
+		Body:       body,
+	}, nil
 }

@@ -1000,27 +1000,38 @@ function clearCredentials() {
 }
 
 // 代理相关函数
-function testProxy() {
+async function testProxy() {
   if (!settings.value.proxy.enabled) return
+
+  // 验证必填字段
+  if (!settings.value.proxy.host || !settings.value.proxy.port) {
+    proxyTestResult.value = {
+      success: false,
+      message: '请填写代理地址和端口'
+    }
+    return
+  }
 
   testingProxy.value = true
   proxyTestResult.value = null
 
-  setTimeout(() => {
-    testingProxy.value = false
-    // 模拟测试结果
-    if (settings.value.proxy.host && settings.value.proxy.port) {
-      proxyTestResult.value = {
-        success: true,
-        message: '代理连接成功'
-      }
-    } else {
-      proxyTestResult.value = {
-        success: false,
-        message: '请填写代理地址和端口'
-      }
+  try {
+    const result = await window.electronAPI.proxy.test({
+      type: settings.value.proxy.type,
+      host: settings.value.proxy.host,
+      port: settings.value.proxy.port,
+      username: settings.value.proxy.username || undefined,
+      password: settings.value.proxy.password || undefined
+    })
+    proxyTestResult.value = result
+  } catch (error) {
+    proxyTestResult.value = {
+      success: false,
+      message: `测试失败: ${(error as Error).message}`
     }
-  }, 1500)
+  } finally {
+    testingProxy.value = false
+  }
 }
 
 // 主题自定义函数

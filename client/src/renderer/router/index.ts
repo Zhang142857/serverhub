@@ -138,6 +138,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '对象存储', icon: 'Box' }
   },
   {
+    path: '/ssl',
+    name: 'SSL',
+    component: () => import('../views/SSL.vue'),
+    meta: { title: 'SSL 证书', icon: 'Lock' }
+  },
+  {
     path: '/ssh-keys',
     name: 'SSHKeys',
     component: () => import('../views/SSHKeys.vue'),

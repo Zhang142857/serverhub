@@ -441,4 +441,50 @@ export class GrpcClient extends EventEmitter {
       })
     })
   }
+
+  // ==================== Docker Hub 搜索（服务端代理） ====================
+  
+  async searchDockerHub(query: string, pageSize: number = 25, page: number = 1): Promise<{
+    success: boolean
+    error?: string
+    results: Array<{
+      name: string
+      description: string
+      star_count: number
+      is_official: boolean
+      is_automated: boolean
+      pull_count: number
+    }>
+    total_count: number
+  }> {
+    return this.unaryCall('SearchDockerHub', {
+      query,
+      page_size: pageSize,
+      page
+    })
+  }
+
+  // HTTP 代理请求
+  async proxyHttpRequest(options: {
+    url: string
+    method?: string
+    headers?: Record<string, string>
+    body?: Buffer
+    timeout?: number
+  }): Promise<{
+    success: boolean
+    status_code: number
+    status_text: string
+    headers: Record<string, string>
+    body: Buffer
+    error?: string
+  }> {
+    return this.unaryCall('ProxyHttpRequest', {
+      url: options.url,
+      method: options.method || 'GET',
+      headers: options.headers || {},
+      body: options.body || Buffer.alloc(0),
+      timeout_seconds: options.timeout || 30
+    })
+  }
 }

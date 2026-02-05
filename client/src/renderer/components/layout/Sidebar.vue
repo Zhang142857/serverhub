@@ -39,6 +39,10 @@
           <el-icon><Link /></el-icon>
           <span>网站管理</span>
         </el-menu-item>
+        <el-menu-item index="/ssl">
+          <el-icon><Lock /></el-icon>
+          <span>SSL 证书</span>
+        </el-menu-item>
         <el-menu-item index="/docker">
           <el-icon><Box /></el-icon>
           <span>Docker 管理</span>
@@ -139,7 +143,8 @@ import {
   Link,
   Coin,
   DataBoard,
-  DataLine
+  DataLine,
+  Lock
 } from '@element-plus/icons-vue'
 
 const route = useRoute()

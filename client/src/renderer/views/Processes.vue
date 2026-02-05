@@ -195,7 +195,7 @@
               {{ currentProcess.status }}
             </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="线程数">{{ currentProcess.threads }}</el-descriptions-item>
+          <el-descriptions-item v-if="currentProcess.threads !== undefined" label="线程数">{{ currentProcess.threads }}</el-descriptions-item>
           <el-descriptions-item label="CPU 使用率">
             <span :class="{ 'high-usage': currentProcess.cpu_percent > 50 }">
               {{ currentProcess.cpu_percent.toFixed(2) }}%
@@ -209,10 +209,10 @@
           <el-descriptions-item label="物理内存 (RSS)">
             {{ formatMemory(currentProcess.memory_rss) }}
           </el-descriptions-item>
-          <el-descriptions-item label="虚拟内存 (VMS)">
+          <el-descriptions-item v-if="currentProcess.memory_vms !== undefined" label="虚拟内存 (VMS)">
             {{ formatMemory(currentProcess.memory_vms) }}
           </el-descriptions-item>
-          <el-descriptions-item label="Nice 值">{{ currentProcess.nice }}</el-descriptions-item>
+          <el-descriptions-item v-if="currentProcess.nice !== undefined" label="Nice 值">{{ currentProcess.nice }}</el-descriptions-item>
           <el-descriptions-item label="运行时间">
             {{ formatUptime(currentProcess.create_time) }}
           </el-descriptions-item>
@@ -256,11 +256,11 @@ interface ProcessInfo {
   cpu_percent: number
   memory_percent: number
   memory_rss: number
-  memory_vms: number
+  memory_vms?: number
   create_time: number
   cmdline: string
-  threads: number
-  nice: number
+  threads?: number
+  nice?: number
   killing?: boolean
   selected?: boolean
   children?: ProcessInfo[]
@@ -392,88 +392,16 @@ onUnmounted(() => {
   if (refreshInterval) clearInterval(refreshInterval)
 })
 
-// 模拟进程数据
-function generateSimulatedProcesses(): ProcessInfo[] {
-  const processStatuses = ['running', 'sleeping', 'sleeping', 'sleeping', 'sleeping']
-  const processTemplates = [
-    { name: 'systemd', user: 'root', ppid: 0, cpu: 0.1, mem: 0.5 },
-    { name: 'sshd', user: 'root', ppid: 1, cpu: 0.0, mem: 0.2 },
-    { name: 'nginx', user: 'www-data', ppid: 1, cpu: 2.5, mem: 1.8 },
-    { name: 'nginx', user: 'www-data', ppid: 0, cpu: 0.5, mem: 0.8 },
-    { name: 'mysqld', user: 'mysql', ppid: 1, cpu: 8.3, mem: 12.5 },
-    { name: 'redis-server', user: 'redis', ppid: 1, cpu: 1.2, mem: 2.1 },
-    { name: 'node', user: 'node', ppid: 1, cpu: 5.6, mem: 4.2 },
-    { name: 'python3', user: 'admin', ppid: 1, cpu: 3.2, mem: 3.8 },
-    { name: 'dockerd', user: 'root', ppid: 1, cpu: 1.8, mem: 2.5 },
-    { name: 'containerd', user: 'root', ppid: 0, cpu: 0.8, mem: 1.2 },
-    { name: 'cron', user: 'root', ppid: 1, cpu: 0.0, mem: 0.1 },
-    { name: 'rsyslogd', user: 'root', ppid: 1, cpu: 0.1, mem: 0.3 },
-    { name: 'php-fpm', user: 'www-data', ppid: 0, cpu: 4.5, mem: 6.2 },
-    { name: 'postgres', user: 'postgres', ppid: 1, cpu: 2.1, mem: 5.4 },
-    { name: 'java', user: 'admin', ppid: 1, cpu: 15.2, mem: 18.6 },
-  ]
-
-  const result: ProcessInfo[] = []
-  let pid = 1
-
-  processTemplates.forEach((template, idx) => {
-    const basePid = pid
-    const variance = () => (Math.random() - 0.5) * 0.5
-
-    result.push({
-      pid: basePid,
-      ppid: template.ppid === 0 ? 0 : (idx > 0 ? 1 : 0),
-      name: template.name,
-      user: template.user,
-      status: processStatuses[Math.floor(Math.random() * processStatuses.length)],
-      cpu_percent: Math.max(0, template.cpu + variance()),
-      memory_percent: Math.max(0, template.mem + variance()),
-      memory_rss: Math.floor((template.mem / 100) * 16 * 1024 * 1024 * 1024),
-      memory_vms: Math.floor((template.mem / 100) * 32 * 1024 * 1024 * 1024),
-      create_time: Date.now() - Math.floor(Math.random() * 86400000 * 30),
-      cmdline: `/usr/bin/${template.name} --config /etc/${template.name}/${template.name}.conf`,
-      threads: Math.floor(Math.random() * 20) + 1,
-      nice: 0,
-      killing: false,
-      selected: false
-    })
-    pid++
-
-    // 为某些进程添加子进程
-    if (['nginx', 'php-fpm', 'node'].includes(template.name)) {
-      for (let i = 0; i < Math.floor(Math.random() * 3) + 1; i++) {
-        result.push({
-          pid: pid,
-          ppid: basePid,
-          name: `${template.name}: worker`,
-          user: template.user,
-          status: 'sleeping',
-          cpu_percent: Math.random() * 2,
-          memory_percent: Math.random() * 1.5,
-          memory_rss: Math.floor(Math.random() * 100 * 1024 * 1024),
-          memory_vms: Math.floor(Math.random() * 200 * 1024 * 1024),
-          create_time: Date.now() - Math.floor(Math.random() * 86400000),
-          cmdline: `${template.name}: worker process`,
-          threads: Math.floor(Math.random() * 5) + 1,
-          nice: 0,
-          killing: false,
-          selected: false
-        })
-        pid++
-      }
-    }
-  })
-
-  return result
-}
-
 async function loadProcesses() {
   if (!selectedServer.value) return
   loading.value = true
   try {
-    // 使用模拟数据
-    await new Promise(resolve => setTimeout(resolve, 300))
-    processes.value = generateSimulatedProcesses()
+    const result = await window.electronAPI.process.list(selectedServer.value)
+    processes.value = result.processes.map(p => ({
+      ...p,
+      killing: false,
+      selected: false
+    }))
   } catch (error) {
     ElMessage.error(`加载进程列表失败: ${(error as Error).message}`)
   } finally {
@@ -481,15 +409,18 @@ async function loadProcesses() {
   }
 }
 
-async function killProcess(process: ProcessInfo) {
+async function killProcess(process: ProcessInfo, signal: number = 15) {
   if (!selectedServer.value) return
 
   process.killing = true
   try {
-    // 模拟终止进程
-    await new Promise(resolve => setTimeout(resolve, 500))
-    ElMessage.success(`进程 ${process.name} (PID: ${process.pid}) 已终止`)
-    await loadProcesses()
+    const result = await window.electronAPI.process.kill(selectedServer.value, process.pid, signal)
+    if (result.success) {
+      ElMessage.success(`进程 ${process.name} (PID: ${process.pid}) 已终止`)
+      await loadProcesses()
+    } else {
+      ElMessage.error(`终止进程失败: ${result.error || '未知错误'}`)
+    }
   } catch (error) {
     ElMessage.error(`终止进程失败: ${(error as Error).message}`)
   } finally {
@@ -499,12 +430,31 @@ async function killProcess(process: ProcessInfo) {
 
 // 批量终止进程
 async function batchKillProcesses() {
-  if (selectedPids.value.length === 0) return
+  if (selectedPids.value.length === 0 || !selectedServer.value) return
 
   loading.value = true
+  let successCount = 0
+  let failCount = 0
+
   try {
-    await new Promise(resolve => setTimeout(resolve, 800))
-    ElMessage.success(`已终止 ${selectedPids.value.length} 个进程`)
+    for (const pid of selectedPids.value) {
+      try {
+        const result = await window.electronAPI.process.kill(selectedServer.value, pid, 15)
+        if (result.success) {
+          successCount++
+        } else {
+          failCount++
+        }
+      } catch {
+        failCount++
+      }
+    }
+
+    if (failCount === 0) {
+      ElMessage.success(`已终止 ${successCount} 个进程`)
+    } else {
+      ElMessage.warning(`成功终止 ${successCount} 个进程，${failCount} 个失败`)
+    }
     selectedPids.value = []
     await loadProcesses()
   } catch (error) {

@@ -19,22 +19,24 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	AgentService_Authenticate_FullMethodName   = "/serverhub.AgentService/Authenticate"
-	AgentService_GetSystemInfo_FullMethodName  = "/serverhub.AgentService/GetSystemInfo"
-	AgentService_GetMetrics_FullMethodName     = "/serverhub.AgentService/GetMetrics"
-	AgentService_ExecuteCommand_FullMethodName = "/serverhub.AgentService/ExecuteCommand"
-	AgentService_ExecuteShell_FullMethodName   = "/serverhub.AgentService/ExecuteShell"
-	AgentService_ReadFile_FullMethodName       = "/serverhub.AgentService/ReadFile"
-	AgentService_WriteFile_FullMethodName      = "/serverhub.AgentService/WriteFile"
-	AgentService_ListDirectory_FullMethodName  = "/serverhub.AgentService/ListDirectory"
-	AgentService_DeleteFile_FullMethodName     = "/serverhub.AgentService/DeleteFile"
-	AgentService_UploadFile_FullMethodName     = "/serverhub.AgentService/UploadFile"
-	AgentService_DownloadFile_FullMethodName   = "/serverhub.AgentService/DownloadFile"
-	AgentService_TailLog_FullMethodName        = "/serverhub.AgentService/TailLog"
-	AgentService_ListServices_FullMethodName   = "/serverhub.AgentService/ListServices"
-	AgentService_ServiceAction_FullMethodName  = "/serverhub.AgentService/ServiceAction"
-	AgentService_ListProcesses_FullMethodName  = "/serverhub.AgentService/ListProcesses"
-	AgentService_KillProcess_FullMethodName    = "/serverhub.AgentService/KillProcess"
+	AgentService_Authenticate_FullMethodName     = "/serverhub.AgentService/Authenticate"
+	AgentService_GetSystemInfo_FullMethodName    = "/serverhub.AgentService/GetSystemInfo"
+	AgentService_GetMetrics_FullMethodName       = "/serverhub.AgentService/GetMetrics"
+	AgentService_ExecuteCommand_FullMethodName   = "/serverhub.AgentService/ExecuteCommand"
+	AgentService_ExecuteShell_FullMethodName     = "/serverhub.AgentService/ExecuteShell"
+	AgentService_ReadFile_FullMethodName         = "/serverhub.AgentService/ReadFile"
+	AgentService_WriteFile_FullMethodName        = "/serverhub.AgentService/WriteFile"
+	AgentService_ListDirectory_FullMethodName    = "/serverhub.AgentService/ListDirectory"
+	AgentService_DeleteFile_FullMethodName       = "/serverhub.AgentService/DeleteFile"
+	AgentService_UploadFile_FullMethodName       = "/serverhub.AgentService/UploadFile"
+	AgentService_DownloadFile_FullMethodName     = "/serverhub.AgentService/DownloadFile"
+	AgentService_TailLog_FullMethodName          = "/serverhub.AgentService/TailLog"
+	AgentService_ListServices_FullMethodName     = "/serverhub.AgentService/ListServices"
+	AgentService_ServiceAction_FullMethodName    = "/serverhub.AgentService/ServiceAction"
+	AgentService_ListProcesses_FullMethodName    = "/serverhub.AgentService/ListProcesses"
+	AgentService_KillProcess_FullMethodName      = "/serverhub.AgentService/KillProcess"
+	AgentService_SearchDockerHub_FullMethodName  = "/serverhub.AgentService/SearchDockerHub"
+	AgentService_ProxyHttpRequest_FullMethodName = "/serverhub.AgentService/ProxyHttpRequest"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -66,6 +68,10 @@ type AgentServiceClient interface {
 	// 进程管理
 	ListProcesses(ctx context.Context, in *ProcessFilter, opts ...grpc.CallOption) (*ProcessList, error)
 	KillProcess(ctx context.Context, in *KillProcessRequest, opts ...grpc.CallOption) (*ActionResponse, error)
+	// Docker Hub 搜索（通过服务端代理）
+	SearchDockerHub(ctx context.Context, in *DockerSearchRequest, opts ...grpc.CallOption) (*DockerSearchResponse, error)
+	// HTTP 代理请求（通用）
+	ProxyHttpRequest(ctx context.Context, in *HttpProxyRequest, opts ...grpc.CallOption) (*HttpProxyResponse, error)
 }
 
 type agentServiceClient struct {
@@ -336,6 +342,24 @@ func (c *agentServiceClient) KillProcess(ctx context.Context, in *KillProcessReq
 	return out, nil
 }
 
+func (c *agentServiceClient) SearchDockerHub(ctx context.Context, in *DockerSearchRequest, opts ...grpc.CallOption) (*DockerSearchResponse, error) {
+	out := new(DockerSearchResponse)
+	err := c.cc.Invoke(ctx, AgentService_SearchDockerHub_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) ProxyHttpRequest(ctx context.Context, in *HttpProxyRequest, opts ...grpc.CallOption) (*HttpProxyResponse, error) {
+	out := new(HttpProxyResponse)
+	err := c.cc.Invoke(ctx, AgentService_ProxyHttpRequest_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility
@@ -365,6 +389,10 @@ type AgentServiceServer interface {
 	// 进程管理
 	ListProcesses(context.Context, *ProcessFilter) (*ProcessList, error)
 	KillProcess(context.Context, *KillProcessRequest) (*ActionResponse, error)
+	// Docker Hub 搜索（通过服务端代理）
+	SearchDockerHub(context.Context, *DockerSearchRequest) (*DockerSearchResponse, error)
+	// HTTP 代理请求（通用）
+	ProxyHttpRequest(context.Context, *HttpProxyRequest) (*HttpProxyResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -419,6 +447,12 @@ func (UnimplementedAgentServiceServer) ListProcesses(context.Context, *ProcessFi
 }
 func (UnimplementedAgentServiceServer) KillProcess(context.Context, *KillProcessRequest) (*ActionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method KillProcess not implemented")
+}
+func (UnimplementedAgentServiceServer) SearchDockerHub(context.Context, *DockerSearchRequest) (*DockerSearchResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SearchDockerHub not implemented")
+}
+func (UnimplementedAgentServiceServer) ProxyHttpRequest(context.Context, *HttpProxyRequest) (*HttpProxyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProxyHttpRequest not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 
@@ -746,6 +780,42 @@ func _AgentService_KillProcess_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_SearchDockerHub_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DockerSearchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).SearchDockerHub(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_SearchDockerHub_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).SearchDockerHub(ctx, req.(*DockerSearchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_ProxyHttpRequest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HttpProxyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ProxyHttpRequest(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_ProxyHttpRequest_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ProxyHttpRequest(ctx, req.(*HttpProxyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -796,6 +866,14 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "KillProcess",
 			Handler:    _AgentService_KillProcess_Handler,
+		},
+		{
+			MethodName: "SearchDockerHub",
+			Handler:    _AgentService_SearchDockerHub_Handler,
+		},
+		{
+			MethodName: "ProxyHttpRequest",
+			Handler:    _AgentService_ProxyHttpRequest_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

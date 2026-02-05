@@ -28,11 +28,22 @@
       </div>
     </div>
 
+    <!-- 环境提示栏 -->
+    <div v-if="selectedServer && envChecked && missingEnvCount > 0" class="env-warning-bar">
+      <div class="warning-content">
+        <el-icon class="warning-icon"><Warning /></el-icon>
+        <span>检测到缺少 {{ missingEnvCount }} 个必要依赖 ({{ missingEnvNames }})，部署可能失败</span>
+      </div>
+      <el-button type="warning" size="small" @click="goToEnvPage">
+        前往环境管理
+      </el-button>
+    </div>
+
     <div v-if="!selectedServer" class="empty-state">
       <el-empty description="请先选择一个已连接的服务器" />
     </div>
 
-    <template v-else>
+    <template v-if="selectedServer">
       <!-- 标签页 -->
       <el-tabs v-model="activeTab" class="main-tabs">
         <el-tab-pane name="sites">
@@ -595,40 +606,235 @@
       </template>
     </el-dialog>
 
-    <!-- 项目设置对话框 -->
-    <el-dialog v-model="showProjectSettings" :title="`项目设置 - ${currentProject?.name}`" width="600px" class="site-dialog" destroy-on-close>
-      <el-form :model="currentProject" label-width="80px" v-if="currentProject" class="site-form">
-        <el-form-item label="域名">
-          <el-input v-model="currentProject.domain" />
-        </el-form-item>
-        <el-form-item label="项目目录">
-          <el-input v-model="currentProject.path" />
-        </el-form-item>
-        <el-form-item label="运行端口" v-if="!['php', 'static-build'].includes(currentProject.type)">
-          <el-input-number v-model="currentProject.port" :min="1024" :max="65535" />
-        </el-form-item>
-        <el-form-item label="构建命令">
-          <div class="build-commands compact">
-            <div v-for="(cmd, index) in currentProject.buildSteps" :key="index" class="command-row">
-              <el-input v-model="cmd.command" style="flex: 1" />
-              <el-checkbox v-model="cmd.optional">可选</el-checkbox>
-              <el-button text type="danger" @click="currentProject.buildSteps.splice(index, 1)"><el-icon><Delete /></el-icon></el-button>
+    <!-- 项目设置对话框 - 完整版 -->
+    <el-dialog v-model="showProjectSettings" :title="`项目设置 - ${currentProject?.name}`" width="800px" top="5vh" class="project-settings-dialog" destroy-on-close>
+      <div class="settings-container" v-if="currentProject">
+        <!-- 设置标签页 -->
+        <el-tabs v-model="settingsTab" class="settings-tabs">
+          <el-tab-pane label="基本信息" name="basic">
+            <div class="settings-section">
+              <div class="section-title">
+                <el-icon><Edit /></el-icon>
+                <span>基本信息</span>
+              </div>
+              <el-form :model="currentProject" label-position="top" class="settings-form">
+                <el-form-item label="项目名称">
+                  <el-input v-model="currentProject.name" disabled />
+                  <div class="form-tip">项目名称创建后不可修改</div>
+                </el-form-item>
+                <el-form-item label="备注说明">
+                  <el-input v-model="currentProject.remark" placeholder="项目的简要描述（可选）" maxlength="100" show-word-limit />
+                </el-form-item>
+                <el-form-item label="项目类型">
+                  <div class="type-grid compact">
+                    <div 
+                      v-for="pt in projectTypes" 
+                      :key="pt.value"
+                      class="type-item"
+                      :class="{ active: currentProject.type === pt.value }"
+                      @click="currentProject.type = pt.value"
+                    >
+                      <div class="type-icon" :style="{ background: pt.color }">
+                        <TechIcon :name="pt.value" />
+                      </div>
+                      <div class="type-name">{{ pt.label }}</div>
+                    </div>
+                  </div>
+                </el-form-item>
+              </el-form>
             </div>
-            <el-button text type="primary" @click="currentProject.buildSteps.push({ command: '', optional: false })">
-              <el-icon><Plus /></el-icon>添加
-            </el-button>
-          </div>
-        </el-form-item>
-        <el-form-item label="启动命令" v-if="!['php', 'static-build'].includes(currentProject.type)">
-          <el-input v-model="currentProject.startCommand" />
-        </el-form-item>
-      </el-form>
+          </el-tab-pane>
+
+          <el-tab-pane label="项目代码" name="code">
+            <div class="settings-section">
+              <div class="section-title">
+                <el-icon><Folder /></el-icon>
+                <span>项目目录</span>
+              </div>
+              <div class="path-input-group">
+                <el-input v-model="currentProject.path" placeholder="/var/www/my-app">
+                  <template #prefix><el-icon><Folder /></el-icon></template>
+                </el-input>
+                <el-button type="primary" @click="browseProjectSettingsPath">
+                  <el-icon><FolderOpened /></el-icon>浏览
+                </el-button>
+              </div>
+            </div>
+
+            <div class="settings-section" style="margin-top: 24px;" v-if="needsPortForProject(currentProject.type)">
+              <div class="section-title">
+                <el-icon><Connection /></el-icon>
+                <span>运行端口</span>
+              </div>
+              <el-input-number v-model="currentProject.port" :min="1024" :max="65535" style="width: 200px;" controls-position="right" />
+              <span class="port-hint">应用监听的端口，Nginx 会将请求转发到此端口</span>
+            </div>
+
+            <div class="settings-section" style="margin-top: 24px;" v-if="currentProject.type === 'static-build'">
+              <div class="section-title">
+                <el-icon><FolderOpened /></el-icon>
+                <span>输出目录</span>
+              </div>
+              <el-input v-model="currentProject.outputDir" placeholder="dist" />
+              <div class="form-tip">构建后的静态文件目录，如 dist、build、public 等</div>
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane label="域名设置" name="domain">
+            <div class="settings-section">
+              <div class="section-title">
+                <el-icon><Link /></el-icon>
+                <span>访问方式</span>
+              </div>
+              
+              <el-radio-group v-model="currentProject.domainType" class="access-radio-group">
+                <el-radio value="ip" class="access-radio">
+                  <div class="radio-content">
+                    <div class="radio-title">IP 直接访问</div>
+                    <div class="radio-desc">通过 http://{{ serverPublicIP }}:{{ currentProject.port || 80 }} 访问</div>
+                  </div>
+                </el-radio>
+                <el-radio value="domain" class="access-radio">
+                  <div class="radio-content">
+                    <div class="radio-title">域名访问</div>
+                    <div class="radio-desc">需要先将域名 DNS 解析到服务器 IP</div>
+                  </div>
+                </el-radio>
+              </el-radio-group>
+
+              <!-- 域名输入 -->
+              <div v-if="currentProject.domainType === 'domain'" class="domain-input-section">
+                <el-input v-model="currentProject.domain" placeholder="app.example.com" size="large">
+                  <template #prepend>http(s)://</template>
+                </el-input>
+                
+                <div class="dns-hint">
+                  <el-icon><InfoFilled /></el-icon>
+                  <span>请在域名服务商添加 A 记录: {{ getDomainPrefix(currentProject.domain) || '主机记录' }} → {{ serverPublicIP }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- SSL 证书 -->
+            <div class="settings-section" style="margin-top: 24px;">
+              <div class="section-title">
+                <el-icon><Lock /></el-icon>
+                <span>SSL 证书</span>
+              </div>
+              
+              <div class="ssl-options">
+                <div 
+                  class="ssl-option" 
+                  :class="{ active: !currentProject.ssl }"
+                  @click="currentProject.ssl = false"
+                >
+                  <el-icon><Unlock /></el-icon>
+                  <div class="ssl-text">
+                    <div class="ssl-title">HTTP</div>
+                    <div class="ssl-desc">不启用加密</div>
+                  </div>
+                </div>
+                <div 
+                  class="ssl-option" 
+                  :class="{ active: currentProject.ssl, disabled: currentProject.domainType === 'ip' }"
+                  @click="currentProject.domainType === 'domain' && (currentProject.ssl = true)"
+                >
+                  <el-icon><Lock /></el-icon>
+                  <div class="ssl-text">
+                    <div class="ssl-title">HTTPS</div>
+                    <div class="ssl-desc">Let's Encrypt 免费证书</div>
+                  </div>
+                </div>
+              </div>
+              
+              <el-alert v-if="currentProject.ssl && currentProject.domainType === 'domain'" type="info" :closable="false" style="margin-top: 12px;">
+                保存后点击"申请证书"按钮来申请 SSL 证书
+              </el-alert>
+              <el-alert v-if="currentProject.domainType === 'ip'" type="warning" :closable="false" style="margin-top: 12px;">
+                IP 访问模式不支持 SSL 证书，请切换到域名访问模式
+              </el-alert>
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane label="部署设置" name="deploy">
+            <!-- 构建命令 -->
+            <div class="settings-section">
+              <div class="section-title">
+                <el-icon><Cpu /></el-icon>
+                <span>构建命令</span>
+                <span class="section-hint">（可选步骤失败不会中断部署）</span>
+              </div>
+              
+              <div class="build-commands">
+                <div v-for="(cmd, index) in currentProject.buildSteps" :key="index" class="command-row">
+                  <span class="cmd-num">{{ index + 1 }}</span>
+                  <el-input v-model="cmd.command" placeholder="npm install" class="cmd-input" />
+                  <el-checkbox v-model="cmd.optional" class="cmd-optional">可选</el-checkbox>
+                  <el-button text type="danger" @click="currentProject.buildSteps.splice(index, 1)" :disabled="currentProject.buildSteps.length <= 1">
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </div>
+                <el-button text type="primary" @click="currentProject.buildSteps.push({ command: '', optional: false })" class="add-cmd-btn">
+                  <el-icon><Plus /></el-icon>添加命令
+                </el-button>
+              </div>
+            </div>
+
+            <!-- 启动命令 -->
+            <div class="settings-section" style="margin-top: 24px;" v-if="needsPortForProject(currentProject.type)">
+              <div class="section-title">
+                <el-icon><VideoPlay /></el-icon>
+                <span>启动命令</span>
+              </div>
+              <el-input v-model="currentProject.startCommand" :placeholder="getDefaultStartCommand(currentProject.type)" />
+              
+              <!-- 进程管理器 -->
+              <div class="pm-row" style="margin-top: 12px;">
+                <span class="pm-label">进程管理:</span>
+                <el-radio-group v-model="currentProject.processManager" size="small">
+                  <el-radio-button value="systemd">Systemd</el-radio-button>
+                  <el-radio-button value="pm2">PM2</el-radio-button>
+                </el-radio-group>
+              </div>
+            </div>
+
+            <!-- 环境变量 -->
+            <div class="settings-section" style="margin-top: 24px;">
+              <div class="section-title">
+                <el-icon><Setting /></el-icon>
+                <span>环境变量</span>
+                <span class="section-hint">（可选）</span>
+              </div>
+              
+              <div class="env-vars" v-if="currentProject.envVars.length">
+                <div v-for="(env, index) in currentProject.envVars" :key="index" class="env-row">
+                  <el-input v-model="env.key" placeholder="KEY" class="env-key" />
+                  <span class="env-eq">=</span>
+                  <el-input v-model="env.value" placeholder="value" class="env-value" :type="isSecretKey(env.key) ? 'password' : 'text'" show-password />
+                  <el-button text type="danger" @click="currentProject.envVars.splice(index, 1)"><el-icon><Delete /></el-icon></el-button>
+                </div>
+              </div>
+              <el-button text type="primary" @click="currentProject.envVars.push({ key: '', value: '' })" class="add-cmd-btn">
+                <el-icon><Plus /></el-icon>添加变量
+              </el-button>
+            </div>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
       <template #footer>
         <div class="dialog-footer-split">
-          <el-button type="danger" @click="deleteProject">删除项目</el-button>
+          <div class="footer-left">
+            <el-button type="danger" @click="deleteProject">删除项目</el-button>
+            <el-button v-if="currentProject?.ssl && currentProject?.domainType === 'domain'" type="warning" @click="requestSSLCertificate" :loading="requestingSSL">
+              <el-icon><Lock /></el-icon>申请证书
+            </el-button>
+            <el-button @click="updateNginxConfig" :loading="updatingNginx">
+              <el-icon><Refresh /></el-icon>更新 Nginx
+            </el-button>
+          </div>
           <div>
             <el-button @click="showProjectSettings = false">取消</el-button>
-            <el-button type="primary" @click="saveProjectSettings" :loading="saving">保存</el-button>
+            <el-button type="primary" @click="saveProjectSettings" :loading="saving">保存设置</el-button>
           </div>
         </div>
       </template>
@@ -663,18 +869,20 @@
         <el-button type="primary" @click="selectProjectPath(projectBrowserPath)">选择</el-button>
       </template>
     </el-dialog>
+
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { useServerStore } from '@/stores/server'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
-  Plus, Refresh, Lock, Delete, ArrowDown, Check, Promotion, Monitor, CopyDocument, 
+  Plus, Refresh, Lock, Delete, ArrowDown, Check, Promotion, CopyDocument, 
   InfoFilled, Unlock, ArrowLeft, ArrowRight, FolderOpened, Folder, Document, 
   HomeFilled, Top, Bottom, Edit, Link, Close, Setting, Upload, UploadFilled,
-  VideoPlay, CircleCheck, Cpu, Box, Connection, Files
+  VideoPlay, CircleCheck, Cpu, Box, Connection, Files, Warning, Monitor
 } from '@element-plus/icons-vue'
 import TechIcon from '@/components/icons/TechIcons.vue'
 
@@ -692,7 +900,7 @@ interface EnvVar {
 }
 
 interface Project {
-  id: string; name: string; type: string; domain: string; path: string; port: number; status: string; ssl: boolean
+  id: string; name: string; type: string; domain: string; domainType?: string; path: string; port: number; status: string; ssl: boolean
   buildSteps: BuildStep[]; startCommand: string; outputDir?: string; envVars: EnvVar[]; processManager?: string
   lastDeploy?: number; deploying?: boolean; remark?: string
 }
@@ -705,6 +913,29 @@ const loading = ref(false)
 const creating = ref(false)
 const saving = ref(false)
 const loadingLogs = ref(false)
+const settingsTab = ref('basic')
+const requestingSSL = ref(false)
+const updatingNginx = ref(false)
+
+// 简化的环境检查 - 只检查关键依赖
+const envChecking = ref(false)
+const envChecked = ref(false)
+const router = useRouter()
+
+// 关键依赖列表
+const criticalEnvs = [
+  { name: 'nginx', label: 'Nginx', checkCmd: 'which nginx' },
+  { name: 'nodejs', label: 'Node.js', checkCmd: 'which node' },
+  { name: 'pm2', label: 'PM2', checkCmd: 'which pm2' }
+]
+
+const envStatus = ref<{ name: string; label: string; installed: boolean }[]>([])
+const missingEnvCount = computed(() => envStatus.value.filter(e => !e.installed).length)
+const missingEnvNames = computed(() => envStatus.value.filter(e => !e.installed).map(e => e.label).join(', '))
+
+function goToEnvPage() {
+  router.push('/environment')
+}
 
 // 数据
 const sites = ref<Site[]>([])
@@ -796,7 +1027,7 @@ const connectedServers = computed(() => serverStore.connectedServers)
 const hasMultipleServers = computed(() => serverStore.hasMultipleServers)
 
 // 监听
-watch(selectedServer, (val) => { if (val) loadData() })
+watch(selectedServer, (val) => { if (val) { loadData(); checkEnvironment() } })
 
 onMounted(() => {
   if (connectedServers.value.length > 0) {
@@ -808,6 +1039,37 @@ onMounted(() => {
 function loadProjectsFromStorage() {
   const saved = localStorage.getItem('serverhub_projects')
   if (saved) { try { projects.value = JSON.parse(saved) } catch { projects.value = [] } }
+}
+
+// 环境检查 - 简化版，只检查关键依赖
+async function checkEnvironment() {
+  if (!selectedServer.value) return
+  envChecking.value = true
+  envChecked.value = false
+  
+  // 初始化环境状态
+  envStatus.value = criticalEnvs.map(e => ({ name: e.name, label: e.label, installed: false }))
+  
+  try {
+    for (const env of envStatus.value) {
+      const criticalEnv = criticalEnvs.find(e => e.name === env.name)
+      if (!criticalEnv) continue
+      
+      try {
+        const checkResult = await window.electronAPI.server.executeCommand(
+          selectedServer.value, 'bash', ['-c', criticalEnv.checkCmd]
+        )
+        env.installed = checkResult.exit_code === 0 && (checkResult.stdout || '').trim() !== ''
+      } catch {
+        env.installed = false
+      }
+    }
+    envChecked.value = true
+  } catch (e) {
+    ElMessage.error('环境检查失败: ' + (e as Error).message)
+  } finally {
+    envChecking.value = false
+  }
 }
 
 function saveProjectsToStorage() {
@@ -1138,13 +1400,62 @@ async function createProxySite() {
 }
 
 async function createProject() {
-  if (!selectedServer.value || !newProject.value.name || !newProject.value.domain) {
-    ElMessage.warning('请填写完整信息'); return
+  if (!selectedServer.value || !newProject.value.name) {
+    ElMessage.warning('请填写项目名称'); return
   }
+  
+  // 如果是 IP 访问方式，自动设置 domain
+  if (newProject.value.domainType === 'ip') {
+    newProject.value.domain = serverPublicIP.value || 'localhost'
+  }
+  
+  if (!newProject.value.path) {
+    newProject.value.path = '/var/www/' + newProject.value.name
+  }
+  
   creating.value = true
   try {
+    // 创建目录
     await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', `sudo mkdir -p ${newProject.value.path}`])
-    const config = generateProjectConfig(newProject.value)
+    
+    // 如果选择了上传代码，先上传
+    if (codeSource.value === 'upload' && selectedLocalPath.value) {
+      ElMessage.info('正在打包并上传代码...')
+      try {
+        // 打包本地目录为 tar.gz
+        const tarBuffer = await window.electronAPI.fs.packDirectory(selectedLocalPath.value, {
+          ignore: ['node_modules', '.git', '__pycache__', '.venv', 'venv', 'dist', 'build', '.next', '.nuxt', 'target', 'vendor']
+        })
+        
+        // 上传并解压到服务器
+        const uploadResult = await window.electronAPI.file.uploadStream(
+          selectedServer.value,
+          tarBuffer,
+          `${newProject.value.path}/upload.tar.gz`,
+          {
+            createDirs: true,
+            isTarGz: true,
+            extractTo: newProject.value.path
+          }
+        )
+        
+        if (!uploadResult.success) {
+          throw new Error(uploadResult.message)
+        }
+        
+        ElMessage.success('代码上传完成')
+      } catch (e) {
+        ElMessage.error('代码上传失败: ' + (e as Error).message)
+        creating.value = false
+        return
+      }
+    }
+    
+    // 生成 Nginx 配置
+    const config = generateProjectConfig({
+      ...newProject.value,
+      domainType: newProject.value.domainType
+    })
     await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 
       `echo '${config.replace(/'/g, "'\\''")}' | sudo tee /etc/nginx/sites-available/${newProject.value.name}`])
     await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 
@@ -1153,7 +1464,9 @@ async function createProject() {
     
     const project: Project = {
       id: `project_${Date.now()}`, name: newProject.value.name, type: newProject.value.type,
-      domain: newProject.value.domain, path: newProject.value.path, port: newProject.value.port,
+      domain: newProject.value.domainType === 'ip' ? `${serverPublicIP.value}:${newProject.value.port}` : newProject.value.domain,
+      domainType: newProject.value.domainType,
+      path: newProject.value.path, port: newProject.value.port,
       status: 'stopped', ssl: newProject.value.ssl, buildSteps: [...newProject.value.buildSteps],
       startCommand: newProject.value.startCommand, outputDir: newProject.value.outputDir,
       envVars: [...newProject.value.envVars], processManager: newProject.value.processManager,
@@ -1164,6 +1477,11 @@ async function createProject() {
     ElMessage.success('项目创建成功')
     showAddProject.value = false
     activeTab.value = 'projects'
+    
+    // 重置上传状态
+    codeSource.value = 'server'
+    selectedLocalPath.value = ''
+    uploadFiles.value = []
   } catch (e) { ElMessage.error('创建失败: ' + (e as Error).message) }
   finally { creating.value = false }
 }
@@ -1244,7 +1562,12 @@ function needsPortForType(type: string): boolean {
 
 async function startWithSystemd(project: Project) {
   const serviceName = `serverhub-${project.name}`
-  const envStr = project.envVars.map(e => `Environment="${e.key}=${e.value}"`).join('\n')
+  // 自动添加 PORT 环境变量
+  const envVars = [...project.envVars]
+  if (project.port && !envVars.some(e => e.key === 'PORT')) {
+    envVars.push({ key: 'PORT', value: String(project.port) })
+  }
+  const envStr = envVars.map(e => `Environment="${e.key}=${e.value}"`).join('\n')
   const serviceContent = `[Unit]
 Description=${project.name}
 After=network.target
@@ -1260,6 +1583,7 @@ ${envStr}
 [Install]
 WantedBy=multi-user.target`
   
+  deployLog.value += `📌 创建 Systemd 服务 (端口: ${project.port})\n`
   await window.electronAPI.server.executeCommand(selectedServer.value!, 'bash', ['-c', 
     `echo '${serviceContent.replace(/'/g, "'\\''")}' | sudo tee /etc/systemd/system/${serviceName}.service`])
   await window.electronAPI.server.executeCommand(selectedServer.value!, 'bash', ['-c', 
@@ -1269,13 +1593,47 @@ WantedBy=multi-user.target`
 
 async function startWithPM2(project: Project) {
   await window.electronAPI.server.executeCommand(selectedServer.value!, 'bash', ['-c', `pm2 delete ${project.name} 2>/dev/null || true`])
-  const envStr = project.envVars.map(e => `${e.key}="${e.value}"`).join(' ')
-  const cmd = envStr 
-    ? `cd ${project.path} && ${envStr} pm2 start --name ${project.name} -- ${project.startCommand}`
-    : `cd ${project.path} && pm2 start --name ${project.name} -- ${project.startCommand}`
-  await window.electronAPI.server.executeCommand(selectedServer.value!, 'bash', ['-c', cmd])
+  
+  // 构建环境变量 - 自动添加 PORT
+  const envVars = [...project.envVars]
+  if (project.port && !envVars.some(e => e.key === 'PORT')) {
+    envVars.push({ key: 'PORT', value: String(project.port) })
+  }
+  const envStr = envVars.map(e => `${e.key}="${e.value}"`).join(' ')
+  const startCmd = project.startCommand?.trim() || 'npm start'
+  
+  // 根据启动命令类型选择正确的 PM2 启动方式
+  let pm2Cmd: string
+  if (startCmd.startsWith('npm ')) {
+    // npm start / npm run xxx -> pm2 start npm --name xxx -- start / run xxx
+    const npmArgs = startCmd.replace(/^npm\s+/, '')
+    pm2Cmd = `pm2 start npm --name "${project.name}" -- ${npmArgs}`
+  } else if (startCmd.startsWith('node ')) {
+    // node app.js -> pm2 start app.js --name xxx
+    const script = startCmd.replace(/^node\s+/, '')
+    pm2Cmd = `pm2 start ${script} --name "${project.name}"`
+  } else if (startCmd.startsWith('python ') || startCmd.startsWith('python3 ')) {
+    // python app.py -> pm2 start app.py --interpreter python3 --name xxx
+    const script = startCmd.replace(/^python3?\s+/, '')
+    pm2Cmd = `pm2 start ${script} --interpreter python3 --name "${project.name}"`
+  } else {
+    // 其他命令使用 ecosystem 文件方式
+    const ecosystemContent = `module.exports = { apps: [{ name: "${project.name}", script: "/bin/bash", args: ["-c", "${startCmd.replace(/"/g, '\\"')}"], cwd: "${project.path}" }] }`
+    await window.electronAPI.server.executeCommand(selectedServer.value!, 'bash', ['-c', 
+      `echo '${ecosystemContent}' > ${project.path}/ecosystem.config.js`])
+    pm2Cmd = `pm2 start ${project.path}/ecosystem.config.js`
+  }
+  
+  // 始终带上环境变量（包含 PORT）
+  const fullCmd = `cd ${project.path} && ${envStr} ${pm2Cmd}`
+  
+  deployLog.value += `📌 启动命令: ${fullCmd}\n`
+  const result = await window.electronAPI.server.executeCommand(selectedServer.value!, 'bash', ['-c', fullCmd])
+  if (result.stdout) deployLog.value += result.stdout + '\n'
+  if (result.stderr) deployLog.value += result.stderr + '\n'
+  
   await window.electronAPI.server.executeCommand(selectedServer.value!, 'bash', ['-c', 'pm2 save'])
-  deployLog.value += `✅ PM2 进程已启动\n`
+  deployLog.value += `✅ PM2 进程已启动 (端口: ${project.port})\n`
 }
 
 // 项目控制
@@ -1325,7 +1683,13 @@ async function loadProjectLogs(project: Project) {
 }
 
 function editProject(project: Project) {
-  currentProject.value = { ...project, buildSteps: [...project.buildSteps], envVars: [...project.envVars] }
+  currentProject.value = { 
+    ...project, 
+    buildSteps: [...project.buildSteps], 
+    envVars: [...project.envVars],
+    domainType: project.domainType || (project.domain?.includes(':') ? 'ip' : 'domain')
+  }
+  settingsTab.value = 'basic'
   showProjectSettings.value = true
 }
 
@@ -1334,10 +1698,110 @@ async function saveProjectSettings() {
   saving.value = true
   try {
     const index = projects.value.findIndex(p => p.id === currentProject.value!.id)
-    if (index !== -1) { projects.value[index] = { ...currentProject.value }; saveProjectsToStorage() }
+    if (index !== -1) { 
+      // 更新域名显示
+      if (currentProject.value.domainType === 'ip') {
+        currentProject.value.domain = `${serverPublicIP.value}:${currentProject.value.port}`
+      }
+      projects.value[index] = { ...currentProject.value }
+      saveProjectsToStorage() 
+    }
     ElMessage.success('已保存')
     showProjectSettings.value = false
   } finally { saving.value = false }
+}
+
+// 更新 Nginx 配置
+async function updateNginxConfig() {
+  if (!currentProject.value || !selectedServer.value) return
+  updatingNginx.value = true
+  try {
+    const config = generateProjectConfig({
+      ...currentProject.value,
+      domainType: currentProject.value.domainType
+    })
+    await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 
+      `echo '${config.replace(/'/g, "'\\''")}' | sudo tee /etc/nginx/sites-available/${currentProject.value.name}`])
+    await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 
+      `sudo ln -sf /etc/nginx/sites-available/${currentProject.value.name} /etc/nginx/sites-enabled/`])
+    const testResult = await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 'sudo nginx -t'])
+    if (testResult.exit_code !== 0) {
+      throw new Error('Nginx 配置测试失败: ' + (testResult.stderr || testResult.stdout))
+    }
+    await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 'sudo systemctl reload nginx'])
+    ElMessage.success('Nginx 配置已更新')
+  } catch (e) {
+    ElMessage.error('更新失败: ' + (e as Error).message)
+  } finally {
+    updatingNginx.value = false
+  }
+}
+
+// 申请 SSL 证书
+async function requestSSLCertificate() {
+  if (!currentProject.value || !selectedServer.value) return
+  if (!currentProject.value.domain || currentProject.value.domainType === 'ip') {
+    ElMessage.warning('请先配置域名')
+    return
+  }
+  
+  requestingSSL.value = true
+  try {
+    // 检查 certbot 是否安装
+    const checkResult = await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 'which certbot'])
+    if (checkResult.exit_code !== 0) {
+      // 安装 certbot
+      ElMessage.info('正在安装 Certbot...')
+      await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 
+        'sudo apt-get update && sudo apt-get install -y certbot python3-certbot-nginx'])
+    }
+    
+    // 申请证书
+    ElMessage.info('正在申请 SSL 证书...')
+    const domain = currentProject.value.domain
+    const certResult = await window.electronAPI.server.executeCommand(selectedServer.value, 'bash', ['-c', 
+      `sudo certbot --nginx -d ${domain} --non-interactive --agree-tos --register-unsafely-without-email --redirect`])
+    
+    if (certResult.exit_code === 0) {
+      ElMessage.success('SSL 证书申请成功！')
+      currentProject.value.ssl = true
+      // 保存更新
+      const index = projects.value.findIndex(p => p.id === currentProject.value!.id)
+      if (index !== -1) {
+        projects.value[index].ssl = true
+        saveProjectsToStorage()
+      }
+    } else {
+      // 显示详细错误
+      const errorMsg = certResult.stderr || certResult.stdout || '未知错误'
+      if (errorMsg.includes('DNS problem') || errorMsg.includes('NXDOMAIN')) {
+        ElMessage.error('SSL 申请失败: 域名 DNS 未正确解析到此服务器')
+      } else if (errorMsg.includes('Connection refused') || errorMsg.includes('port 80')) {
+        ElMessage.error('SSL 申请失败: 80 端口无法访问，请检查防火墙设置')
+      } else if (errorMsg.includes('too many certificates')) {
+        ElMessage.error('SSL 申请失败: 该域名申请次数过多，请稍后再试')
+      } else {
+        ElMessage.error('SSL 申请失败: ' + errorMsg.substring(0, 200))
+      }
+    }
+  } catch (e) {
+    ElMessage.error('SSL 申请失败: ' + (e as Error).message)
+  } finally {
+    requestingSSL.value = false
+  }
+}
+
+// 浏览项目设置中的目录
+async function browseProjectSettingsPath() {
+  if (!selectedServer.value || !currentProject.value) return
+  projectBrowserPath.value = currentProject.value.path || '/var/www'
+  await browseProjectPath(projectBrowserPath.value)
+  showProjectPathBrowser.value = true
+}
+
+// 判断项目类型是否需要端口
+function needsPortForProject(type: string): boolean {
+  return !['php', 'static-build'].includes(type)
 }
 
 async function deleteProject() {
@@ -1435,11 +1899,28 @@ function generateProxyConfig(proxy: { name: string; domain: string; upstream: st
 }`
 }
 
-function generateProjectConfig(project: { name: string; domain: string; path: string; port: number; type: string; outputDir?: string }): string {
-  if (project.type === 'static-build') {
-    return `server {
+function generateProjectConfig(project: { name: string; domain: string; domainType?: string; path: string; port: number; type: string; outputDir?: string; ssl?: boolean }): string {
+  // 如果是 IP 访问模式，使用 _ 作为 server_name（匹配所有请求）
+  const serverName = project.domainType === 'ip' || !project.domain ? '_' : project.domain
+  const useSSL = project.ssl && project.domain && project.domainType !== 'ip'
+  
+  // HTTP 重定向到 HTTPS
+  const httpRedirect = useSSL ? `
+server {
     listen 80;
-    server_name ${project.domain};
+    server_name ${serverName};
+    return 301 https://$host$request_uri;
+}
+` : ''
+  
+  if (project.type === 'static-build') {
+    return `${httpRedirect}server {
+    listen ${useSSL ? '443 ssl http2' : (project.domainType === 'ip' ? project.port : '80')};
+    server_name ${serverName};${useSSL ? `
+    ssl_certificate /etc/letsencrypt/live/${project.domain}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${project.domain}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;` : ''}
     root ${project.path}/${project.outputDir || 'dist'};
     index index.html;
     location / { try_files $uri $uri/ /index.html; }
@@ -1447,9 +1928,13 @@ function generateProjectConfig(project: { name: string; domain: string; path: st
 }`
   }
   if (project.type === 'php') {
-    return `server {
-    listen 80;
-    server_name ${project.domain};
+    return `${httpRedirect}server {
+    listen ${useSSL ? '443 ssl http2' : (project.domainType === 'ip' ? project.port : '80')};
+    server_name ${serverName};${useSSL ? `
+    ssl_certificate /etc/letsencrypt/live/${project.domain}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${project.domain}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;` : ''}
     root ${project.path}/public;
     index index.php index.html;
     location / { try_files $uri $uri/ /index.php?$query_string; }
@@ -1462,15 +1947,35 @@ function generateProjectConfig(project: { name: string; domain: string; path: st
     location ~ /\\. { deny all; }
 }`
   }
-  return `server {
+  // 对于 Node.js/Python/Go 等需要反向代理的项目
+  // IP 访问模式下直接监听端口，不需要 Nginx 代理
+  if (project.domainType === 'ip') {
+    // IP 访问模式：应用直接监听端口，不需要 Nginx 配置
+    // 返回一个简单的配置用于健康检查
+    return `# IP 访问模式 - 应用直接监听端口 ${project.port}
+server {
     listen 80;
-    server_name ${project.domain};
+    server_name _;
+    location /${project.name}-health {
+        return 200 'OK';
+        add_header Content-Type text/plain;
+    }
+}`
+  }
+  return `${httpRedirect}server {
+    listen ${useSSL ? '443 ssl http2' : '80'};
+    server_name ${serverName};${useSSL ? `
+    ssl_certificate /etc/letsencrypt/live/${project.domain}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${project.domain}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;` : ''}
     location / {
         proxy_pass http://127.0.0.1:${project.port};
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
     }
@@ -1582,7 +2087,7 @@ function formatTime(ts: number): string {
 
 // 部署向导
 :deep(.deploy-wizard-dialog) {
-  .el-dialog { background: var(--bg-secondary) !important; border-radius: 14px; overflow: hidden; }
+  .el-dialog { background: var(--bg-secondary) !important; border-radius: 12px; overflow: hidden; }
   .el-dialog__header { display: none; }
   .el-dialog__body { padding: 0; }
 }
@@ -1591,27 +2096,27 @@ function formatTime(ts: number): string {
 
 .wizard-header {
   display: flex; justify-content: space-between; align-items: center; padding: 16px 20px;
-  background: linear-gradient(135deg, var(--primary-color) 0%, #818cf8 100%);
-  .wizard-title { display: flex; align-items: center; gap: 10px; color: #fff; font-size: 16px; font-weight: 600;
-    .title-icon { font-size: 20px; }
+  background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color);
+  .wizard-title { display: flex; align-items: center; gap: 10px; color: var(--text-color); font-size: 16px; font-weight: 600;
+    .title-icon { font-size: 20px; color: var(--success-color); }
   }
-  .close-btn { color: rgba(255,255,255,0.8); &:hover { color: #fff; background: rgba(255,255,255,0.1); } }
+  .close-btn { color: var(--text-secondary); &:hover { color: var(--text-color); background: var(--bg-secondary); } }
 }
 
 .wizard-steps {
-  display: flex; padding: 16px 20px; background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color); gap: 8px;
+  display: flex; padding: 16px 20px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); gap: 8px;
 }
 
 .wizard-step {
   flex: 1; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; cursor: default; transition: all 0.2s;
-  &.clickable { cursor: pointer; &:hover { background: var(--bg-secondary); } }
-  &.active { background: var(--primary-color);
-    .step-title { color: #fff; }
-    .step-indicator { background: rgba(255,255,255,0.2); color: #fff; }
+  &.clickable { cursor: pointer; &:hover { background: var(--bg-tertiary); } }
+  &.active { background: var(--bg-tertiary); border: 1px solid var(--success-color);
+    .step-title { color: var(--text-color); }
+    .step-indicator { background: var(--success-color); color: #fff; }
   }
-  &.completed .step-indicator { background: #22c55e; color: #fff; }
-  .step-indicator { width: 28px; height: 28px; border-radius: 50%; background: var(--bg-secondary); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
-  .step-title { font-size: 13px; font-weight: 500; }
+  &.completed .step-indicator { background: var(--success-color); color: #fff; }
+  .step-indicator { width: 28px; height: 28px; border-radius: 50%; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; color: var(--text-secondary); border: 1px solid var(--border-color); }
+  .step-title { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
 }
 
 .wizard-content { flex: 1; overflow-y: auto; padding: 20px; }
@@ -1633,10 +2138,10 @@ function formatTime(ts: number): string {
 .source-tabs {
   display: flex; gap: 10px; margin-bottom: 16px;
   .source-tab {
-    flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; border: 2px solid var(--border-color);
-    border-radius: 8px; cursor: pointer; transition: all 0.2s;
-    &:hover { border-color: var(--primary-color); }
-    &.active { border-color: var(--primary-color); background: rgba(99, 102, 241, 0.08); }
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; border: 1px solid var(--border-color);
+    border-radius: 8px; cursor: pointer; transition: all 0.2s; background: var(--bg-tertiary);
+    &:hover { border-color: var(--text-secondary); }
+    &.active { border-color: var(--success-color); background: var(--bg-secondary); }
   }
 }
 
@@ -1646,7 +2151,7 @@ function formatTime(ts: number): string {
 
 .upload-zone {
   border: 2px dashed var(--border-color); border-radius: 10px; padding: 40px; text-align: center; cursor: pointer; transition: all 0.2s;
-  &:hover { border-color: var(--primary-color); background: rgba(99, 102, 241, 0.05); }
+  &:hover { border-color: var(--text-secondary); background: var(--bg-tertiary); }
   .upload-icon { font-size: 40px; color: var(--text-secondary); margin-bottom: 10px; }
   .upload-text { font-size: 14px; }
 }
@@ -1667,10 +2172,10 @@ function formatTime(ts: number): string {
 .type-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
 
 .type-item {
-  display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 8px; border: 2px solid var(--border-color);
-  border-radius: 10px; cursor: pointer; transition: all 0.2s;
-  &:hover { border-color: var(--primary-color); }
-  &.active { border-color: var(--primary-color); background: rgba(99, 102, 241, 0.08); }
+  display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 8px; border: 1px solid var(--border-color);
+  border-radius: 10px; cursor: pointer; transition: all 0.2s; background: var(--bg-tertiary);
+  &:hover { border-color: var(--text-secondary); }
+  &.active { border-color: var(--success-color); background: var(--bg-secondary); }
   .type-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
     :deep(svg) { width: 22px; height: 22px; }
   }
@@ -1691,26 +2196,26 @@ function formatTime(ts: number): string {
 .access-radio-group { display: flex; flex-direction: column; gap: 10px; width: 100%; }
 
 .access-radio {
-  margin-right: 0 !important; padding: 14px; border: 2px solid var(--border-color); border-radius: 10px; height: auto !important;
-  &.is-checked { border-color: var(--primary-color); background: rgba(99, 102, 241, 0.08); }
+  margin-right: 0 !important; padding: 14px; border: 1px solid var(--border-color); border-radius: 10px; height: auto !important; background: var(--bg-tertiary);
+  &.is-checked { border-color: var(--success-color); background: var(--bg-secondary); }
   .radio-content { .radio-title { font-weight: 500; margin-bottom: 2px; } .radio-desc { font-size: 12px; color: var(--text-secondary); } }
 }
 
 .domain-input-section { margin-top: 16px; }
 
 .dns-hint {
-  display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 10px 14px; background: rgba(99, 102, 241, 0.08);
-  border-radius: 6px; font-size: 12px; color: var(--text-secondary);
+  display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 10px 14px; background: var(--bg-tertiary);
+  border-radius: 6px; font-size: 12px; color: var(--text-secondary); border: 1px solid var(--border-color);
 }
 
 // SSL
 .ssl-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 .ssl-option {
-  display: flex; align-items: center; gap: 12px; padding: 16px; border: 2px solid var(--border-color); border-radius: 10px; cursor: pointer; transition: all 0.2s;
-  &:hover { border-color: var(--primary-color); }
-  &.active { border-color: var(--primary-color); background: rgba(99, 102, 241, 0.08);
-    .el-icon { color: var(--primary-color); }
+  display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px solid var(--border-color); border-radius: 10px; cursor: pointer; transition: all 0.2s; background: var(--bg-tertiary);
+  &:hover { border-color: var(--text-secondary); }
+  &.active { border-color: var(--success-color); background: var(--bg-secondary);
+    .el-icon { color: var(--success-color); }
   }
   .el-icon { font-size: 24px; color: var(--text-secondary); }
   .ssl-text { .ssl-title { font-weight: 500; } .ssl-desc { font-size: 12px; color: var(--text-secondary); } }
@@ -1720,16 +2225,16 @@ function formatTime(ts: number): string {
 .template-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 
 .template-card {
-  display: flex; align-items: center; gap: 10px; padding: 12px; border: 2px solid var(--border-color); border-radius: 10px;
-  cursor: pointer; transition: all 0.2s; position: relative;
-  &:hover { border-color: var(--primary-color); }
-  &.active { border-color: var(--primary-color); background: rgba(99, 102, 241, 0.08); }
+  display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--border-color); border-radius: 10px;
+  cursor: pointer; transition: all 0.2s; position: relative; background: var(--bg-tertiary);
+  &:hover { border-color: var(--text-secondary); }
+  &.active { border-color: var(--success-color); background: var(--bg-secondary); }
   .template-icon { font-size: 20px; }
   .template-info { flex: 1; min-width: 0;
     .template-name { font-size: 13px; font-weight: 500; }
     .template-desc { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   }
-  .template-check { position: absolute; top: 6px; right: 6px; color: var(--primary-color); font-size: 16px; }
+  .template-check { position: absolute; top: 6px; right: 6px; color: var(--success-color); font-size: 16px; }
 }
 
 // 构建命令
@@ -1802,6 +2307,77 @@ function formatTime(ts: number): string {
 .rewrite-presets { display: flex; gap: 8px; margin-bottom: 10px; }
 
 .code-textarea {
-  :deep(.el-textarea__inner) { font-family: 'JetBrains Mono', monospace; font-size: 12px; background: var(--bg-tertiary); }
+  :deep(.el-textarea__inner) { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+}
+
+// 环境警告栏
+.env-warning-bar {
+  display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; margin-bottom: 16px;
+  background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 10px;
+  .warning-content { display: flex; align-items: center; gap: 8px;
+    .warning-icon { font-size: 18px; color: #f59e0b; }
+  }
+}
+
+// 项目设置对话框
+:deep(.project-settings-dialog) {
+  .el-dialog { background: var(--bg-secondary) !important; border-radius: 12px; }
+  .el-dialog__header { background: var(--bg-tertiary); padding: 14px 20px; margin: 0; border-bottom: 1px solid var(--border-color); }
+  .el-dialog__body { padding: 0; }
+  .el-dialog__footer { padding: 14px 20px; border-top: 1px solid var(--border-color); background: var(--bg-tertiary); }
+}
+
+.settings-container {
+  min-height: 450px;
+}
+
+.settings-tabs {
+  :deep(.el-tabs__header) {
+    margin: 0;
+    padding: 0 20px;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+  }
+  :deep(.el-tabs__content) {
+    padding: 20px;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+}
+
+.settings-section {
+  margin-bottom: 20px;
+  
+  .section-title {
+    display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; margin-bottom: 14px;
+    .el-icon { color: var(--primary-color); }
+    .section-hint { font-weight: 400; font-size: 12px; color: var(--text-secondary); }
+  }
+}
+
+.settings-form {
+  .form-tip { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+}
+
+.type-grid.compact {
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  
+  .type-item {
+    padding: 10px 6px;
+    .type-icon { width: 30px; height: 30px; }
+    .type-name { font-size: 11px; }
+  }
+}
+
+.ssl-option.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  &:hover { border-color: var(--border-color); }
+}
+
+.footer-left {
+  display: flex;
+  gap: 10px;
 }
 </style>

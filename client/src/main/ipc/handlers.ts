@@ -1,4 +1,4 @@
-import { ipcMain, dialog, shell } from 'electron'
+import { ipcMain, dialog, shell, net } from 'electron'
 import { GrpcClient } from '../grpc/client'
 import { AIGateway } from '../ai/gateway'
 import * as secureStorage from '../security/secureStorage'
@@ -8,6 +8,7 @@ import * as zlib from 'zlib'
 import { promisify } from 'util'
 import { execSync } from 'child_process'
 import * as os from 'os'
+import * as https from 'https'
 
 const gzip = promisify(zlib.gzip)
 
@@ -413,6 +414,29 @@ export function setupIpcHandlers() {
     return await client.removeVolume(volumeName, force)
   })
 
+  // ==================== Docker Hub 搜索（服务端代理） ====================
+  ipcMain.handle('docker:searchHub', async (_, serverId: string, query: string, pageSize?: number, page?: number) => {
+    const client = serverConnections.get(serverId)
+    if (!client) {
+      throw new Error('Server not connected')
+    }
+    return await client.searchDockerHub(query, pageSize || 25, page || 1)
+  })
+
+  ipcMain.handle('docker:proxyRequest', async (_, serverId: string, options: {
+    url: string
+    method?: string
+    headers?: Record<string, string>
+    body?: Buffer
+    timeout?: number
+  }) => {
+    const client = serverConnections.get(serverId)
+    if (!client) {
+      throw new Error('Server not connected')
+    }
+    return await client.proxyHttpRequest(options)
+  })
+
   // ==================== AI 功能 ====================
   ipcMain.handle('ai:chat', async (event, message: string, context?: AIContext) => {
     return await aiGateway.chat(message, context, (chunk) => {
@@ -658,6 +682,87 @@ export function setupIpcHandlers() {
     return { success: true }
   })
 
+  // ==================== 代理测试 ====================
+  ipcMain.handle('proxy:test', async (_, config: { type: string; host: string; port: number; username?: string; password?: string }) => {
+    return new Promise((resolve) => {
+      const testUrl = 'https://www.google.com'
+      const timeout = 10000 // 10秒超时
+
+      try {
+        // 构建代理 URL
+        let proxyUrl = `${config.type}://${config.host}:${config.port}`
+        if (config.username && config.password) {
+          proxyUrl = `${config.type}://${encodeURIComponent(config.username)}:${encodeURIComponent(config.password)}@${config.host}:${config.port}`
+        }
+
+        // 使用 https 模块通过代理测试连接
+        const url = new URL(testUrl)
+        const proxyHost = config.host
+        const proxyPort = config.port
+
+        // 创建 CONNECT 请求到代理服务器
+        const http = require('http')
+        const connectReq = http.request({
+          host: proxyHost,
+          port: proxyPort,
+          method: 'CONNECT',
+          path: `${url.hostname}:443`,
+          timeout: timeout,
+          headers: config.username && config.password ? {
+            'Proxy-Authorization': 'Basic ' + Buffer.from(`${config.username}:${config.password}`).toString('base64')
+          } : {}
+        })
+
+        connectReq.on('connect', (res: any, socket: any) => {
+          if (res.statusCode === 200) {
+            // 代理连接成功，现在通过隧道发送 HTTPS 请求
+            const tlsSocket = require('tls').connect({
+              socket: socket,
+              servername: url.hostname
+            }, () => {
+              // TLS 握手成功
+              tlsSocket.write(`HEAD / HTTP/1.1\r\nHost: ${url.hostname}\r\nConnection: close\r\n\r\n`)
+            })
+
+            tlsSocket.on('data', () => {
+              tlsSocket.destroy()
+              socket.destroy()
+              resolve({ success: true, message: '代理连接成功' })
+            })
+
+            tlsSocket.on('error', (err: Error) => {
+              tlsSocket.destroy()
+              socket.destroy()
+              resolve({ success: false, message: `TLS 连接失败: ${err.message}` })
+            })
+
+            tlsSocket.setTimeout(timeout, () => {
+              tlsSocket.destroy()
+              socket.destroy()
+              resolve({ success: false, message: '连接超时' })
+            })
+          } else {
+            socket.destroy()
+            resolve({ success: false, message: `代理返回错误状态码: ${res.statusCode}` })
+          }
+        })
+
+        connectReq.on('error', (err: Error) => {
+          resolve({ success: false, message: `代理连接失败: ${err.message}` })
+        })
+
+        connectReq.on('timeout', () => {
+          connectReq.destroy()
+          resolve({ success: false, message: '连接超时' })
+        })
+
+        connectReq.end()
+      } catch (error) {
+        resolve({ success: false, message: `测试失败: ${(error as Error).message}` })
+      }
+    })
+  })
+
   // ==================== 安全凭据存储 ====================
   ipcMain.handle('secure:isAvailable', async () => {
     return secureStorage.isEncryptionAvailable()
@@ -713,6 +818,245 @@ export function setupIpcHandlers() {
     } catch (error) {
       return { success: false, error: (error as Error).message }
     }
+  })
+
+  // ==================== HTTP 请求（用于外部 API 调用） ====================
+  ipcMain.handle('http:request', async (_, options: {
+    url: string
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+    headers?: Record<string, string>
+    body?: string | object
+    timeout?: number
+    proxy?: {
+      host: string
+      port: number
+      username?: string
+      password?: string
+    }
+  }) => {
+    return new Promise((resolve) => {
+      const url = new URL(options.url)
+      const method = options.method || 'GET'
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...options.headers
+      }
+
+      const bodyData = options.body
+        ? typeof options.body === 'string'
+          ? options.body
+          : JSON.stringify(options.body)
+        : undefined
+
+      if (bodyData) {
+        headers['Content-Length'] = Buffer.byteLength(bodyData).toString()
+      }
+
+      const timeout = options.timeout || 30000
+
+      // 如果有代理配置，使用代理
+      if (options.proxy && options.proxy.host && options.proxy.port) {
+        const http = require('http')
+        const tls = require('tls')
+        
+        const proxyHeaders: Record<string, string> = {}
+        if (options.proxy.username && options.proxy.password) {
+          proxyHeaders['Proxy-Authorization'] = 'Basic ' + Buffer.from(
+            `${options.proxy.username}:${options.proxy.password}`
+          ).toString('base64')
+        }
+
+        const connectReq = http.request({
+          host: options.proxy.host,
+          port: options.proxy.port,
+          method: 'CONNECT',
+          path: `${url.hostname}:${url.port || 443}`,
+          timeout: timeout,
+          headers: proxyHeaders
+        })
+
+        connectReq.on('connect', (proxyRes: any, socket: any) => {
+          if (proxyRes.statusCode !== 200) {
+            socket.destroy()
+            resolve({
+              success: false,
+              status: proxyRes.statusCode,
+              statusText: `Proxy error: ${proxyRes.statusCode}`,
+              data: null,
+              error: `Proxy returned status ${proxyRes.statusCode}`
+            })
+            return
+          }
+
+          const tlsSocket = tls.connect({
+            socket: socket,
+            servername: url.hostname
+          }, () => {
+            // 构建 HTTP 请求
+            let requestLine = `${method} ${url.pathname}${url.search} HTTP/1.1\r\n`
+            requestLine += `Host: ${url.hostname}\r\n`
+            for (const [key, value] of Object.entries(headers)) {
+              requestLine += `${key}: ${value}\r\n`
+            }
+            requestLine += 'Connection: close\r\n\r\n'
+            if (bodyData) {
+              requestLine += bodyData
+            }
+            tlsSocket.write(requestLine)
+          })
+
+          let responseData = ''
+          tlsSocket.on('data', (chunk: Buffer) => {
+            responseData += chunk.toString()
+          })
+
+          tlsSocket.on('end', () => {
+            tlsSocket.destroy()
+            socket.destroy()
+            
+            // 解析 HTTP 响应
+            const headerEndIndex = responseData.indexOf('\r\n\r\n')
+            if (headerEndIndex === -1) {
+              resolve({
+                success: false,
+                status: 0,
+                statusText: 'Invalid response',
+                data: null,
+                error: 'Invalid HTTP response'
+              })
+              return
+            }
+
+            const headerPart = responseData.substring(0, headerEndIndex)
+            const bodyPart = responseData.substring(headerEndIndex + 4)
+            
+            const statusLine = headerPart.split('\r\n')[0]
+            const statusMatch = statusLine.match(/HTTP\/\d\.\d (\d+) (.*)/)
+            const statusCode = statusMatch ? parseInt(statusMatch[1]) : 0
+            const statusText = statusMatch ? statusMatch[2] : 'Unknown'
+
+            let parsedData: any = bodyPart
+            try {
+              parsedData = JSON.parse(bodyPart)
+            } catch {
+              // 保持原始字符串
+            }
+
+            resolve({
+              success: statusCode >= 200 && statusCode < 300,
+              status: statusCode,
+              statusText: statusText,
+              data: parsedData
+            })
+          })
+
+          tlsSocket.on('error', (error: Error) => {
+            tlsSocket.destroy()
+            socket.destroy()
+            resolve({
+              success: false,
+              status: 0,
+              statusText: error.message,
+              data: null,
+              error: error.message
+            })
+          })
+
+          tlsSocket.setTimeout(timeout, () => {
+            tlsSocket.destroy()
+            socket.destroy()
+            resolve({
+              success: false,
+              status: 0,
+              statusText: 'Request timeout',
+              data: null,
+              error: 'Request timeout'
+            })
+          })
+        })
+
+        connectReq.on('error', (error: Error) => {
+          resolve({
+            success: false,
+            status: 0,
+            statusText: error.message,
+            data: null,
+            error: `Proxy connection failed: ${error.message}`
+          })
+        })
+
+        connectReq.on('timeout', () => {
+          connectReq.destroy()
+          resolve({
+            success: false,
+            status: 0,
+            statusText: 'Proxy connection timeout',
+            data: null,
+            error: 'Proxy connection timeout'
+          })
+        })
+
+        connectReq.end()
+      } else {
+        // 无代理，直接请求
+        const requestOptions = {
+          hostname: url.hostname,
+          port: url.port || (url.protocol === 'https:' ? 443 : 80),
+          path: url.pathname + url.search,
+          method,
+          headers,
+          timeout: timeout
+        }
+
+        const req = https.request(requestOptions, (res) => {
+          let data = ''
+          res.on('data', (chunk) => {
+            data += chunk
+          })
+          res.on('end', () => {
+            let parsedData: any = data
+            try {
+              parsedData = JSON.parse(data)
+            } catch {
+              // 保持原始字符串
+            }
+            resolve({
+              success: res.statusCode && res.statusCode >= 200 && res.statusCode < 300,
+              status: res.statusCode,
+              statusText: res.statusMessage,
+              data: parsedData,
+              headers: res.headers
+            })
+          })
+        })
+
+        req.on('error', (error) => {
+          resolve({
+            success: false,
+            status: 0,
+            statusText: error.message,
+            data: null,
+            error: error.message
+          })
+        })
+
+        req.on('timeout', () => {
+          req.destroy()
+          resolve({
+            success: false,
+            status: 0,
+            statusText: 'Request timeout',
+            data: null,
+            error: 'Request timeout'
+          })
+        })
+
+        if (bodyData) {
+          req.write(bodyData)
+        }
+        req.end()
+      }
+    })
   })
 }
 

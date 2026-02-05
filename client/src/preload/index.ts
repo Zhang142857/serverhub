@@ -153,6 +153,8 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('file:read', serverId, path),
     write: (serverId: string, path: string, content: string): Promise<FileWriteResult> =>
       ipcRenderer.invoke('file:write', serverId, path, content),
+    delete: (serverId: string, path: string): Promise<{ success: boolean; message?: string; error?: string }> =>
+      ipcRenderer.invoke('file:delete', serverId, path),
     uploadStream: (serverId: string, data: Buffer | Uint8Array, remotePath: string, options?: {
       mode?: number
       createDirs?: boolean
@@ -255,6 +257,12 @@ const electronAPI: ElectronAPI = {
     }
   },
 
+  // 代理测试
+  proxy: {
+    test: (config: { type: string; host: string; port: number; username?: string; password?: string }): Promise<{ success: boolean; message: string }> =>
+      ipcRenderer.invoke('proxy:test', config)
+  },
+
   // 安全凭据存储
   secure: {
     isAvailable: (): Promise<boolean> =>
@@ -271,6 +279,62 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('secure:listKeys'),
     clearAll: (): Promise<{ success: boolean; error?: string }> =>
       ipcRenderer.invoke('secure:clearAll')
+  },
+
+  // HTTP 请求（用于外部 API 调用）
+  http: {
+    request: (options: {
+      url: string
+      method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+      headers?: Record<string, string>
+      body?: string | object
+      timeout?: number
+      proxy?: {
+        host: string
+        port: number
+        username?: string
+        password?: string
+      }
+    }): Promise<{
+      success: boolean
+      status: number
+      statusText: string
+      data: any
+      headers?: Record<string, string>
+      error?: string
+    }> => ipcRenderer.invoke('http:request', options)
+  },
+
+  // Docker 操作（服务端代理）
+  docker: {
+    searchHub: (serverId: string, query: string, pageSize?: number, page?: number): Promise<{
+      success: boolean
+      error?: string
+      results: Array<{
+        name: string
+        description: string
+        star_count: number
+        is_official: boolean
+        is_automated: boolean
+        pull_count: number
+      }>
+      total_count: number
+    }> => ipcRenderer.invoke('docker:searchHub', serverId, query, pageSize, page),
+    
+    proxyRequest: (serverId: string, options: {
+      url: string
+      method?: string
+      headers?: Record<string, string>
+      body?: Buffer
+      timeout?: number
+    }): Promise<{
+      success: boolean
+      status_code: number
+      status_text: string
+      headers: Record<string, string>
+      body: Buffer
+      error?: string
+    }> => ipcRenderer.invoke('docker:proxyRequest', serverId, options)
   }
 }
 
