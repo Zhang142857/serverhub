@@ -1,21 +1,34 @@
+/**
+ * AI 网关
+ * 统一管理 AI 提供者和工具调用
+ */
+
 import axios, { AxiosInstance } from 'axios'
 import { EventEmitter } from 'events'
+import { ToolRegistry, toolRegistry, ToolExecutor, ToolContext } from './tools/registry'
+import { systemTools } from './tools/system'
+import { dockerTools } from './tools/docker'
+import { fileTools } from './tools/file'
+import { ReActEngine, createReActEngine, ReActStep, TaskPlan, AIProvider, AIResponse } from './react-engine'
 
-interface AIConfig {
+// AI 配置
+export interface AIConfig {
   provider: 'openai' | 'claude' | 'ollama' | 'custom'
   apiKey?: string
   baseUrl?: string
   model?: string
 }
 
-interface ChatMessage {
+// 聊天消息
+export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
   tool_call_id?: string
   tool_calls?: ToolCall[]
 }
 
-interface ToolCall {
+// 工具调用
+export interface ToolCall {
   id: string
   type: 'function'
   function: {
@@ -24,30 +37,31 @@ interface ToolCall {
   }
 }
 
-interface AIContext {
+// AI 上下文
+export interface AIContext {
   serverId?: string
   history?: ChatMessage[]
   systemPrompt?: string
+  agentMode?: boolean
 }
 
-interface Tool {
-  name: string
-  description: string
-  parameters: Record<string, unknown>
-  execute: (params: Record<string, unknown>, context?: AIContext) => Promise<unknown>
+// Agent 执行结果
+export interface AgentResult {
+  response: string
+  steps: ReActStep[]
+  plan?: TaskPlan
+  toolCalls: Array<{
+    name: string
+    arguments: Record<string, unknown>
+    result: unknown
+    success: boolean
+  }>
 }
 
-interface ToolExecutor {
-  executeCommand: (serverId: string, command: string, args?: string[]) => Promise<unknown>
-  listContainers: (serverId: string, all?: boolean) => Promise<unknown>
-  containerAction: (serverId: string, containerId: string, action: string) => Promise<unknown>
-  readFile: (serverId: string, path: string) => Promise<unknown>
-  writeFile: (serverId: string, path: string, content: string) => Promise<unknown>
-  listDirectory: (serverId: string, path: string) => Promise<unknown>
-  getSystemInfo: (serverId: string) => Promise<unknown>
-}
-
-export class AIGateway extends EventEmitter {
+/**
+ * AI 网关类
+ */
+export class AIGateway extends EventEmitter implements AIProvider {
   private config: AIConfig = {
     provider: 'ollama',
     baseUrl: 'http://localhost:11434',
@@ -55,18 +69,12 @@ export class AIGateway extends EventEmitter {
   }
 
   private httpClient: AxiosInstance
-  private tools: Map<string, Tool> = new Map()
-  private systemPrompt: string
+  private toolRegistry: ToolRegistry
+  private reactEngine: ReActEngine
   private toolExecutor: ToolExecutor | null = null
-  private maxToolCalls: number = 5  // 防止无限循环
+  private maxToolCalls: number = 10
 
-  constructor() {
-    super()
-    this.httpClient = axios.create({
-      timeout: 120000
-    })
-
-    this.systemPrompt = `你是 ServerHub AI 助手，一个专业的服务器运维助手。你可以帮助用户：
+  private systemPrompt: string = `你是 ServerHub AI 助手，一个专业的服务器运维助手。你可以帮助用户：
 - 执行服务器命令
 - 管理 Docker 容器和镜像
 - 分析系统日志和性能指标
@@ -74,25 +82,75 @@ export class AIGateway extends EventEmitter {
 - 生成配置文件
 - 提供运维建议
 
-你有以下工具可以使用：
-- execute_command: 在服务器上执行命令
-- list_containers: 列出 Docker 容器
-- container_action: 对容器执行操作（启动、停止、重启等）
-- read_file: 读取服务器上的文件
-- write_file: 写入文件到服务器
-- list_directory: 列出目录内容
-- get_system_info: 获取系统信息
+请用简洁专业的语言回答用户问题。`
 
-当用户请求执行操作时，请使用相应的工具。请用简洁专业的语言回答用户问题。`
+  constructor() {
+    super()
+    this.httpClient = axios.create({
+      timeout: 120000
+    })
 
+    // 使用全局工具注册中心
+    this.toolRegistry = toolRegistry
+
+    // 注册默认工具
     this.registerDefaultTools()
+
+    // 创建 ReAct 引擎
+    this.reactEngine = createReActEngine(this.toolRegistry, {
+      maxIterations: 10,
+      enablePlanning: true,
+      requireConfirmation: true,
+      streamOutput: true
+    })
+
+    // 设置 AI 提供者
+    this.reactEngine.setAIProvider(this)
+
+    // 转发 ReAct 引擎事件
+    this.setupReActEvents()
   }
 
-  // 设置工具执行器（由 IPC 处理器注入）
+  /**
+   * 设置 ReAct 引擎事件转发
+   */
+  private setupReActEvents(): void {
+    this.reactEngine.on('step:think', (step) => this.emit('agent:think', step))
+    this.reactEngine.on('step:act', (step) => this.emit('agent:act', step))
+    this.reactEngine.on('step:observe', (step) => this.emit('agent:observe', step))
+    this.reactEngine.on('step:answer', (step) => this.emit('agent:answer', step))
+    this.reactEngine.on('plan:generated', (plan) => this.emit('agent:plan', plan))
+    this.reactEngine.on('plan:updated', (plan) => this.emit('agent:plan_update', plan))
+    this.reactEngine.on('confirmation:required', (data) => this.emit('agent:confirm', data))
+    this.reactEngine.on('tool:progress', (data) => this.emit('tool:progress', data))
+  }
+
+  /**
+   * 注册默认工具
+   */
+  private registerDefaultTools(): void {
+    // 注册系统工具
+    this.toolRegistry.registerAll(systemTools)
+
+    // 注册 Docker 工具
+    this.toolRegistry.registerAll(dockerTools)
+
+    // 注册文件工具
+    this.toolRegistry.registerAll(fileTools)
+
+    console.log(`[AIGateway] Registered ${this.toolRegistry.size} tools`)
+  }
+
+  /**
+   * 设置工具执行器（由 IPC 处理器注入）
+   */
   setToolExecutor(executor: ToolExecutor): void {
     this.toolExecutor = executor
   }
 
+  /**
+   * 设置 AI 提供者
+   */
   setProvider(provider: string, config: Partial<AIConfig>): boolean {
     this.config = {
       ...this.config,
@@ -102,10 +160,16 @@ export class AIGateway extends EventEmitter {
     return true
   }
 
+  /**
+   * 获取配置
+   */
   getConfig(): AIConfig {
     return { ...this.config }
   }
 
+  /**
+   * 获取可用的 AI 提供者列表
+   */
   getProviders(): Array<{ id: string; name: string; description: string }> {
     return [
       { id: 'ollama', name: 'Ollama', description: '本地运行的开源大语言模型' },
@@ -115,11 +179,47 @@ export class AIGateway extends EventEmitter {
     ]
   }
 
+  /**
+   * 获取工具注册中心
+   */
+  getToolRegistry(): ToolRegistry {
+    return this.toolRegistry
+  }
+
+  /**
+   * 获取所有可用工具
+   */
+  getAvailableTools(): Array<{
+    name: string
+    displayName: string
+    description: string
+    category: string
+    dangerous: boolean
+  }> {
+    return this.toolRegistry.getAll().map(tool => ({
+      name: tool.name,
+      displayName: tool.displayName,
+      description: tool.description,
+      category: tool.category,
+      dangerous: tool.dangerous || false
+    }))
+  }
+
+  /**
+   * 普通聊天（非 Agent 模式）
+   */
   async chat(
     message: string,
     context?: AIContext,
     onStream?: (chunk: string) => void
   ): Promise<string> {
+    // 如果是 Agent 模式，使用 ReAct 引擎
+    if (context?.agentMode && context?.serverId && this.toolExecutor) {
+      const result = await this.executeAgent(message, context, onStream)
+      return result.response
+    }
+
+    // 普通聊天模式
     const messages: ChatMessage[] = [
       { role: 'system', content: context?.systemPrompt || this.systemPrompt },
       ...(context?.history || []),
@@ -138,29 +238,238 @@ export class AIGateway extends EventEmitter {
     }
   }
 
-  // 执行工具调用
-  private async executeToolCall(
-    toolCall: ToolCall,
-    context?: AIContext
-  ): Promise<string> {
-    const tool = this.tools.get(toolCall.function.name)
-    if (!tool) {
-      return JSON.stringify({ error: `Unknown tool: ${toolCall.function.name}` })
+  /**
+   * 实现 AIProvider 接口的 chat 方法
+   */
+  async chatWithTools(
+    messages: Array<{ role: string; content: string }>,
+    options?: {
+      tools?: Array<{
+        type: 'function'
+        function: { name: string; description: string; parameters: Record<string, unknown> }
+      }>
+      stream?: boolean
     }
+  ): Promise<AIResponse> {
+    const chatMessages = messages.map(m => ({
+      role: m.role as 'system' | 'user' | 'assistant',
+      content: m.content
+    }))
 
-    try {
-      const params = JSON.parse(toolCall.function.arguments)
-      // 如果没有指定 serverId，使用 context 中的
-      if (!params.serverId && context?.serverId) {
-        params.serverId = context.serverId
-      }
-      const result = await tool.execute(params, context)
-      return JSON.stringify(result)
-    } catch (error) {
-      return JSON.stringify({ error: `Tool execution failed: ${(error as Error).message}` })
+    switch (this.config.provider) {
+      case 'openai':
+        return this.chatWithOpenAITools(chatMessages, options)
+      case 'claude':
+        return this.chatWithClaudeTools(chatMessages, options)
+      case 'ollama':
+        return this.chatWithOllamaTools(chatMessages, options)
+      default:
+        // 默认返回纯文本响应
+        const response = await this.chat(messages[messages.length - 1].content)
+        return { content: response }
     }
   }
 
+  /**
+   * Agent 模式执行
+   */
+  async executeAgent(
+    message: string,
+    context: AIContext,
+    onStream?: (chunk: string) => void
+  ): Promise<AgentResult> {
+    if (!context.serverId) {
+      throw new Error('Agent mode requires serverId')
+    }
+
+    if (!this.toolExecutor) {
+      throw new Error('Tool executor not set')
+    }
+
+    const toolCalls: AgentResult['toolCalls'] = []
+
+    // 监听工具执行事件
+    const onToolExecute = (step: ReActStep) => {
+      if (step.toolCall && step.toolResult) {
+        toolCalls.push({
+          name: step.toolCall.name,
+          arguments: step.toolCall.arguments,
+          result: step.toolResult.data,
+          success: step.toolResult.success
+        })
+      }
+    }
+
+    this.reactEngine.on('step:observe', onToolExecute)
+
+    try {
+      const result = await this.reactEngine.execute(
+        message,
+        {
+          serverId: context.serverId,
+          executor: this.toolExecutor,
+          history: (context.history || []).map(m => ({
+            role: m.role as 'user' | 'assistant' | 'system',
+            content: m.content
+          })),
+          systemPrompt: context.systemPrompt
+        },
+        (step) => {
+          // 流式输出
+          if (onStream && step.type === 'answer') {
+            onStream(step.content)
+          }
+          // 发出步骤事件
+          this.emit('agent:step', step)
+        }
+      )
+
+      return {
+        response: result.response,
+        steps: result.steps,
+        plan: result.plan,
+        toolCalls
+      }
+    } finally {
+      this.reactEngine.off('step:observe', onToolExecute)
+    }
+  }
+
+  /**
+   * OpenAI 带工具调用
+   */
+  private async chatWithOpenAITools(
+    messages: ChatMessage[],
+    options?: {
+      tools?: Array<{
+        type: 'function'
+        function: { name: string; description: string; parameters: Record<string, unknown> }
+      }>
+      stream?: boolean
+    }
+  ): Promise<AIResponse> {
+    const url = `${this.config.baseUrl || 'https://api.openai.com'}/v1/chat/completions`
+
+    const response = await this.httpClient.post(url, {
+      model: this.config.model || 'gpt-4',
+      messages,
+      stream: false,
+      tools: options?.tools,
+      tool_choice: options?.tools?.length ? 'auto' : undefined
+    }, {
+      headers: {
+        'Authorization': `Bearer ${this.config.apiKey}`,
+        'Content-Type': 'application/json'
+      }
+    })
+
+    const assistantMessage = response.data.choices?.[0]?.message
+    return {
+      content: assistantMessage?.content || '',
+      toolCalls: assistantMessage?.tool_calls,
+      finishReason: response.data.choices?.[0]?.finish_reason
+    }
+  }
+
+  /**
+   * Claude 带工具调用
+   */
+  private async chatWithClaudeTools(
+    messages: ChatMessage[],
+    options?: {
+      tools?: Array<{
+        type: 'function'
+        function: { name: string; description: string; parameters: Record<string, unknown> }
+      }>
+      stream?: boolean
+    }
+  ): Promise<AIResponse> {
+    const url = `${this.config.baseUrl || 'https://api.anthropic.com'}/v1/messages`
+
+    // 转换工具格式为 Claude 格式
+    const tools = options?.tools?.map(t => ({
+      name: t.function.name,
+      description: t.function.description,
+      input_schema: t.function.parameters
+    }))
+
+    // 分离系统消息
+    const systemMessage = messages.find(m => m.role === 'system')
+    const chatMessages = messages.filter(m => m.role !== 'system')
+
+    const response = await this.httpClient.post(url, {
+      model: this.config.model || 'claude-3-opus-20240229',
+      max_tokens: 4096,
+      system: systemMessage?.content,
+      messages: chatMessages.map(m => ({
+        role: m.role === 'tool' ? 'user' : m.role,
+        content: m.content
+      })),
+      tools
+    }, {
+      headers: {
+        'x-api-key': this.config.apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      }
+    })
+
+    // 转换 Claude 响应格式
+    const content = response.data.content || []
+    const textContent = content.find((c: { type: string }) => c.type === 'text')
+    const toolUseContent = content.filter((c: { type: string }) => c.type === 'tool_use')
+
+    const toolCalls = toolUseContent.map((t: { id: string; name: string; input: unknown }, i: number) => ({
+      id: t.id || `call_${i}`,
+      type: 'function' as const,
+      function: {
+        name: t.name,
+        arguments: JSON.stringify(t.input)
+      }
+    }))
+
+    return {
+      content: textContent?.text || '',
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      finishReason: response.data.stop_reason
+    }
+  }
+
+  /**
+   * Ollama 带工具调用
+   */
+  private async chatWithOllamaTools(
+    messages: ChatMessage[],
+    options?: {
+      tools?: Array<{
+        type: 'function'
+        function: { name: string; description: string; parameters: Record<string, unknown> }
+      }>
+      stream?: boolean
+    }
+  ): Promise<AIResponse> {
+    const url = `${this.config.baseUrl}/api/chat`
+
+    const response = await this.httpClient.post(url, {
+      model: this.config.model,
+      messages: messages.map(m => ({
+        role: m.role === 'tool' ? 'assistant' : m.role,
+        content: m.content
+      })),
+      tools: options?.tools,
+      stream: false
+    })
+
+    return {
+      content: response.data.message?.content || '',
+      toolCalls: response.data.message?.tool_calls,
+      finishReason: response.data.done ? 'stop' : undefined
+    }
+  }
+
+  /**
+   * Ollama 聊天
+   */
   private async chatWithOllama(
     messages: ChatMessage[],
     _context?: AIContext,
@@ -168,15 +477,13 @@ export class AIGateway extends EventEmitter {
   ): Promise<string> {
     const url = `${this.config.baseUrl}/api/chat`
 
-    // Ollama 也支持 tools，但格式略有不同
-    const tools = this.getToolDefinitions()
-
     if (onStream) {
-      // 流式响应
       const response = await this.httpClient.post(url, {
         model: this.config.model,
-        messages: this.convertMessagesForOllama(messages),
-        tools: tools.length > 0 ? tools : undefined,
+        messages: messages.map(m => ({
+          role: m.role === 'tool' ? 'assistant' : m.role,
+          content: m.content
+        })),
         stream: true
       }, {
         responseType: 'stream'
@@ -205,43 +512,39 @@ export class AIGateway extends EventEmitter {
         response.data.on('error', reject)
       })
     } else {
-      // 非流式响应
       const response = await this.httpClient.post(url, {
         model: this.config.model,
-        messages: this.convertMessagesForOllama(messages),
-        tools: tools.length > 0 ? tools : undefined,
+        messages: messages.map(m => ({
+          role: m.role === 'tool' ? 'assistant' : m.role,
+          content: m.content
+        })),
         stream: false
       })
       return response.data.message?.content || ''
     }
   }
 
-  private convertMessagesForOllama(messages: ChatMessage[]): Array<{role: string; content: string}> {
-    return messages.map(m => ({
-      role: m.role === 'tool' ? 'assistant' : m.role,
-      content: m.content
-    }))
-  }
-
+  /**
+   * OpenAI 聊天
+   */
   private async chatWithOpenAI(
     messages: ChatMessage[],
     context?: AIContext,
     onStream?: (chunk: string) => void
   ): Promise<string> {
     const url = `${this.config.baseUrl || 'https://api.openai.com'}/v1/chat/completions`
-    const tools = this.getToolDefinitions()
+    const tools = context?.agentMode ? this.toolRegistry.getToolDefinitions() : undefined
 
     let currentMessages = [...messages]
     let toolCallCount = 0
 
-    // 循环处理工具调用
     while (toolCallCount < this.maxToolCalls) {
       const response = await this.httpClient.post(url, {
         model: this.config.model || 'gpt-4',
         messages: currentMessages,
-        stream: false,  // 工具调用时不使用流式
-        tools: tools.length > 0 ? tools : undefined,
-        tool_choice: tools.length > 0 ? 'auto' : undefined
+        stream: false,
+        tools: tools,
+        tool_choice: tools?.length ? 'auto' : undefined
       }, {
         headers: {
           'Authorization': `Bearer ${this.config.apiKey}`,
@@ -254,23 +557,32 @@ export class AIGateway extends EventEmitter {
         throw new Error('No response from OpenAI')
       }
 
-      // 检查是否有工具调用
-      if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-        // 添加助手消息（包含工具调用）
+      if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0 && context?.serverId && this.toolExecutor) {
         currentMessages.push({
           role: 'assistant',
           content: assistantMessage.content || '',
           tool_calls: assistantMessage.tool_calls
         })
 
-        // 执行每个工具调用并添加结果
         for (const toolCall of assistantMessage.tool_calls) {
           this.emit('tool_call', {
             name: toolCall.function.name,
             arguments: toolCall.function.arguments
           })
 
-          const result = await this.executeToolCall(toolCall, context)
+          const toolContext: ToolContext = {
+            serverId: context.serverId,
+            executor: this.toolExecutor
+          }
+
+          let params: Record<string, unknown>
+          try {
+            params = JSON.parse(toolCall.function.arguments)
+          } catch {
+            params = {}
+          }
+
+          const result = await this.toolRegistry.execute(toolCall.function.name, params, toolContext)
 
           this.emit('tool_result', {
             name: toolCall.function.name,
@@ -279,29 +591,27 @@ export class AIGateway extends EventEmitter {
 
           currentMessages.push({
             role: 'tool',
-            content: result,
+            content: JSON.stringify(result),
             tool_call_id: toolCall.id
           })
         }
 
         toolCallCount++
       } else {
-        // 没有工具调用，返回最终响应
         const finalContent = assistantMessage.content || ''
-
-        // 如果需要流式输出，一次性发送
         if (onStream && finalContent) {
           onStream(finalContent)
         }
-
         return finalContent
       }
     }
 
-    // 达到最大工具调用次数
     return '抱歉，操作过于复杂，请尝试简化您的请求。'
   }
 
+  /**
+   * Claude 聊天
+   */
   private async chatWithClaude(
     messages: ChatMessage[],
     _context?: AIContext,
@@ -309,7 +619,6 @@ export class AIGateway extends EventEmitter {
   ): Promise<string> {
     const url = `${this.config.baseUrl || 'https://api.anthropic.com'}/v1/messages`
 
-    // 转换消息格式（Claude API 格式略有不同）
     const systemMessage = messages.find(m => m.role === 'system')
     const chatMessages = messages.filter(m => m.role !== 'system')
 
@@ -361,247 +670,7 @@ export class AIGateway extends EventEmitter {
       return response.data.content?.[0]?.text || ''
     }
   }
-
-  // 工具注册
-  registerTool(tool: Tool): void {
-    this.tools.set(tool.name, tool)
-  }
-
-  private registerDefaultTools(): void {
-    // 执行命令工具
-    this.registerTool({
-      name: 'execute_command',
-      description: '在服务器上执行 shell 命令。返回命令的输出结果。',
-      parameters: {
-        type: 'object',
-        properties: {
-          command: { type: 'string', description: '要执行的命令' },
-          args: {
-            type: 'array',
-            items: { type: 'string' },
-            description: '命令参数（可选）'
-          },
-          serverId: { type: 'string', description: '服务器ID（如果上下文中已有则可省略）' }
-        },
-        required: ['command']
-      },
-      execute: async (params, context) => {
-        if (!this.toolExecutor) {
-          return { error: '工具执行器未初始化' }
-        }
-        const serverId = params.serverId as string || context?.serverId
-        if (!serverId) {
-          return { error: '未指定服务器ID' }
-        }
-        try {
-          const result = await this.toolExecutor.executeCommand(
-            serverId,
-            params.command as string,
-            params.args as string[] | undefined
-          )
-          return result
-        } catch (error) {
-          return { error: (error as Error).message }
-        }
-      }
-    })
-
-    // 列出容器工具
-    this.registerTool({
-      name: 'list_containers',
-      description: '列出服务器上的 Docker 容器',
-      parameters: {
-        type: 'object',
-        properties: {
-          all: { type: 'boolean', description: '是否包含已停止的容器，默认 false' },
-          serverId: { type: 'string', description: '服务器ID（如果上下文中已有则可省略）' }
-        },
-        required: []
-      },
-      execute: async (params, context) => {
-        if (!this.toolExecutor) {
-          return { error: '工具执行器未初始化' }
-        }
-        const serverId = params.serverId as string || context?.serverId
-        if (!serverId) {
-          return { error: '未指定服务器ID' }
-        }
-        try {
-          const result = await this.toolExecutor.listContainers(serverId, params.all as boolean)
-          return result
-        } catch (error) {
-          return { error: (error as Error).message }
-        }
-      }
-    })
-
-    // 容器操作工具
-    this.registerTool({
-      name: 'container_action',
-      description: '对 Docker 容器执行操作（启动、停止、重启、暂停、恢复、删除）',
-      parameters: {
-        type: 'object',
-        properties: {
-          containerId: { type: 'string', description: '容器ID或名称' },
-          action: {
-            type: 'string',
-            enum: ['start', 'stop', 'restart', 'pause', 'unpause', 'remove'],
-            description: '要执行的操作'
-          },
-          serverId: { type: 'string', description: '服务器ID（如果上下文中已有则可省略）' }
-        },
-        required: ['containerId', 'action']
-      },
-      execute: async (params, context) => {
-        if (!this.toolExecutor) {
-          return { error: '工具执行器未初始化' }
-        }
-        const serverId = params.serverId as string || context?.serverId
-        if (!serverId) {
-          return { error: '未指定服务器ID' }
-        }
-        try {
-          const result = await this.toolExecutor.containerAction(
-            serverId,
-            params.containerId as string,
-            params.action as string
-          )
-          return result
-        } catch (error) {
-          return { error: (error as Error).message }
-        }
-      }
-    })
-
-    // 文件读取工具
-    this.registerTool({
-      name: 'read_file',
-      description: '读取服务器上的文件内容',
-      parameters: {
-        type: 'object',
-        properties: {
-          path: { type: 'string', description: '文件的绝对路径' },
-          serverId: { type: 'string', description: '服务器ID（如果上下文中已有则可省略）' }
-        },
-        required: ['path']
-      },
-      execute: async (params, context) => {
-        if (!this.toolExecutor) {
-          return { error: '工具执行器未初始化' }
-        }
-        const serverId = params.serverId as string || context?.serverId
-        if (!serverId) {
-          return { error: '未指定服务器ID' }
-        }
-        try {
-          const result = await this.toolExecutor.readFile(serverId, params.path as string)
-          return result
-        } catch (error) {
-          return { error: (error as Error).message }
-        }
-      }
-    })
-
-    // 文件写入工具
-    this.registerTool({
-      name: 'write_file',
-      description: '将内容写入服务器上的文件',
-      parameters: {
-        type: 'object',
-        properties: {
-          path: { type: 'string', description: '文件的绝对路径' },
-          content: { type: 'string', description: '要写入的内容' },
-          serverId: { type: 'string', description: '服务器ID（如果上下文中已有则可省略）' }
-        },
-        required: ['path', 'content']
-      },
-      execute: async (params, context) => {
-        if (!this.toolExecutor) {
-          return { error: '工具执行器未初始化' }
-        }
-        const serverId = params.serverId as string || context?.serverId
-        if (!serverId) {
-          return { error: '未指定服务器ID' }
-        }
-        try {
-          const result = await this.toolExecutor.writeFile(
-            serverId,
-            params.path as string,
-            params.content as string
-          )
-          return result
-        } catch (error) {
-          return { error: (error as Error).message }
-        }
-      }
-    })
-
-    // 列出目录工具
-    this.registerTool({
-      name: 'list_directory',
-      description: '列出服务器上目录的内容',
-      parameters: {
-        type: 'object',
-        properties: {
-          path: { type: 'string', description: '目录的绝对路径' },
-          serverId: { type: 'string', description: '服务器ID（如果上下文中已有则可省略）' }
-        },
-        required: ['path']
-      },
-      execute: async (params, context) => {
-        if (!this.toolExecutor) {
-          return { error: '工具执行器未初始化' }
-        }
-        const serverId = params.serverId as string || context?.serverId
-        if (!serverId) {
-          return { error: '未指定服务器ID' }
-        }
-        try {
-          const result = await this.toolExecutor.listDirectory(serverId, params.path as string)
-          return result
-        } catch (error) {
-          return { error: (error as Error).message }
-        }
-      }
-    })
-
-    // 获取系统信息工具
-    this.registerTool({
-      name: 'get_system_info',
-      description: '获取服务器的系统信息，包括 CPU、内存、磁盘、网络等',
-      parameters: {
-        type: 'object',
-        properties: {
-          serverId: { type: 'string', description: '服务器ID（如果上下文中已有则可省略）' }
-        },
-        required: []
-      },
-      execute: async (params, context) => {
-        if (!this.toolExecutor) {
-          return { error: '工具执行器未初始化' }
-        }
-        const serverId = params.serverId as string || context?.serverId
-        if (!serverId) {
-          return { error: '未指定服务器ID' }
-        }
-        try {
-          const result = await this.toolExecutor.getSystemInfo(serverId)
-          return result
-        } catch (error) {
-          return { error: (error as Error).message }
-        }
-      }
-    })
-  }
-
-  private getToolDefinitions(): Array<{type: string; function: {name: string; description: string; parameters: Record<string, unknown>}}> {
-    return Array.from(this.tools.values()).map(tool => ({
-      type: 'function',
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters
-      }
-    }))
-  }
 }
+
+// 导出单例
+export const aiGateway = new AIGateway()

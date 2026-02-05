@@ -97,6 +97,22 @@
           <el-icon><Grid /></el-icon>
           <span>插件市场</span>
         </el-menu-item>
+
+        <!-- 插件动态菜单 -->
+        <template v-if="pluginMenus.length > 0">
+          <el-divider />
+          <el-menu-item
+            v-for="menu in pluginMenus"
+            :key="menu.id"
+            :index="menu.route || `/plugin/${menu.pluginId}`"
+          >
+            <el-icon>
+              <component :is="getMenuIcon(menu.icon)" />
+            </el-icon>
+            <span>{{ menu.label }}</span>
+            <el-tag v-if="menu.pluginId" size="small" type="info" class="plugin-tag">插件</el-tag>
+          </el-menu-item>
+        </template>
       </el-menu>
 
       <!-- 已连接服务器列表 - 多服务器模式才显示 -->
@@ -127,9 +143,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useServerStore } from '@/stores/server'
+import { usePluginStore } from '@/stores/plugin'
 import {
   Monitor,
   Odometer,
@@ -144,22 +161,156 @@ import {
   Coin,
   DataBoard,
   DataLine,
-  Lock
+  Lock,
+  Connection,
+  Document,
+  Files,
+  Key,
+  Picture,
+  VideoCamera,
+  Promotion,
+  TrendCharts,
+  Warning,
+  Bell,
+  Calendar,
+  Clock,
+  Collection,
+  Compass,
+  CreditCard,
+  Delete,
+  Download,
+  Edit,
+  ElementPlus,
+  Expand,
+  Film,
+  Filter,
+  Flag,
+  FolderOpened,
+  FullScreen,
+  Goods,
+  Help,
+  House,
+  InfoFilled,
+  List,
+  Location,
+  Magic,
+  Management,
+  Menu,
+  Message,
+  Microphone,
+  Moon,
+  More,
+  Notification,
+  Operation,
+  Opportunity,
+  Orange,
+  Paperclip,
+  Phone,
+  Platform,
+  Plus,
+  Pointer,
+  Position,
+  Present,
+  Printer,
+  QuestionFilled,
+  Rank,
+  Reading,
+  Refresh,
+  RefreshLeft,
+  RefreshRight,
+  Remove,
+  Right,
+  ScaleToOriginal,
+  School,
+  Search,
+  Select,
+  Sell,
+  Service,
+  Share,
+  Ship,
+  Shop,
+  ShoppingBag,
+  ShoppingCart,
+  Smoking,
+  Soccer,
+  SoldOut,
+  Sort,
+  Stamp,
+  Star,
+  Stopwatch,
+  SuccessFilled,
+  Sugar,
+  Sunny,
+  Switch,
+  SwitchButton,
+  TakeawayBox,
+  Ticket,
+  Timer,
+  Tools,
+  TopLeft,
+  TopRight,
+  Trophy,
+  TurnOff,
+  Umbrella,
+  Unlock,
+  Upload,
+  User,
+  UserFilled,
+  Van,
+  VideoPlay,
+  VideoPause,
+  View,
+  Wallet,
+  WarningFilled,
+  Watch,
+  WaterMelon,
+  WindPower,
+  ZoomIn,
+  ZoomOut
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
 const serverStore = useServerStore()
+const pluginStore = usePluginStore()
 
 const currentRoute = computed(() => route.path)
 const connectedServers = computed(() => serverStore.connectedServers)
 const currentServerId = computed(() => serverStore.currentServerId)
 const hasMultipleServers = computed(() => serverStore.hasMultipleServers)
+const pluginMenus = computed(() => pluginStore.sidebarMenus)
+
+// 图标映射
+const iconMap: Record<string, unknown> = {
+  Monitor, Odometer, Box, Folder, Setting, Cloudy, Grid, Cpu, ChatDotRound, Link, Coin,
+  DataBoard, DataLine, Lock, Connection, Document, Files, Key, Picture, VideoCamera,
+  Promotion, TrendCharts, Warning, Bell, Calendar, Clock, Collection, Compass, CreditCard,
+  Delete, Download, Edit, ElementPlus, Expand, Film, Filter, Flag, FolderOpened, FullScreen,
+  Goods, Help, House, InfoFilled, List, Location, Magic, Management, Menu, Message,
+  Microphone, Moon, More, Notification, Operation, Opportunity, Orange, Paperclip, Phone,
+  Platform, Plus, Pointer, Position, Present, Printer, QuestionFilled, Rank, Reading,
+  Refresh, RefreshLeft, RefreshRight, Remove, Right, ScaleToOriginal, School, Search,
+  Select, Sell, Service, Share, Ship, Shop, ShoppingBag, ShoppingCart, Smoking, Soccer,
+  SoldOut, Sort, Stamp, Star, Stopwatch, SuccessFilled, Sugar, Sunny, Switch, SwitchButton,
+  TakeawayBox, Ticket, Timer, Tools, TopLeft, TopRight, Trophy, TurnOff, Umbrella, Unlock,
+  Upload, User, UserFilled, Van, VideoPlay, VideoPause, View, Wallet, WarningFilled, Watch,
+  WaterMelon, WindPower, ZoomIn, ZoomOut
+}
+
+function getMenuIcon(iconName?: string) {
+  if (!iconName) return Grid
+  return iconMap[iconName] || Grid
+}
 
 function selectServer(id: string) {
   serverStore.setCurrentServer(id)
   router.push(`/server/${id}`)
 }
+
+onMounted(() => {
+  // 初始化插件系统
+  pluginStore.initialize()
+})
 </script>
 
 <style lang="scss" scoped>
@@ -268,5 +419,13 @@ function selectServer(id: string) {
 .sidebar-footer {
   border-top: 1px solid var(--border-color);
   padding: 8px 0;
+}
+
+.plugin-tag {
+  margin-left: auto;
+  font-size: 10px;
+  padding: 0 4px;
+  height: 16px;
+  line-height: 16px;
 }
 </style>

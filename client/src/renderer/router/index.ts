@@ -1,7 +1,8 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import type { RouteRecordRaw } from 'vue-router'
+import type { RouteRecordRaw, Router } from 'vue-router'
 
-const routes: RouteRecordRaw[] = [
+// 静态路由
+const staticRoutes: RouteRecordRaw[] = [
   {
     path: '/',
     name: 'Dashboard',
@@ -166,12 +167,152 @@ const routes: RouteRecordRaw[] = [
     name: 'Settings',
     component: () => import('../views/Settings.vue'),
     meta: { title: '设置', icon: 'Setting' }
+  },
+  // 插件通用路由（用于加载插件页面）
+  {
+    path: '/plugin/:pluginId/:page?',
+    name: 'PluginPage',
+    component: () => import('../views/PluginPage.vue'),
+    meta: { title: '插件页面', hidden: true }
   }
 ]
 
+// 已注册的动态路由名称
+const registeredDynamicRoutes: Set<string> = new Set()
+
 const router = createRouter({
   history: createWebHashHistory(),
-  routes
+  routes: staticRoutes
 })
+
+/**
+ * 动态路由管理器
+ */
+export const dynamicRouteManager = {
+  /**
+   * 注册动态路由
+   */
+  addRoute(route: {
+    path: string
+    name: string
+    component?: () => Promise<unknown>
+    componentPath?: string
+    pluginId?: string
+    meta?: Record<string, unknown>
+  }): boolean {
+    // 检查路由是否已存在
+    if (router.hasRoute(route.name)) {
+      console.warn(`[Router] Route ${route.name} already exists`)
+      return false
+    }
+
+    const routeConfig: RouteRecordRaw = {
+      path: route.path,
+      name: route.name,
+      meta: {
+        ...route.meta,
+        pluginId: route.pluginId,
+        dynamic: true
+      },
+      component: route.component || (() => import('../views/PluginPage.vue'))
+    }
+
+    router.addRoute(routeConfig)
+    registeredDynamicRoutes.add(route.name)
+    console.log(`[Router] Added dynamic route: ${route.path}`)
+    return true
+  },
+
+  /**
+   * 移除动态路由
+   */
+  removeRoute(name: string): boolean {
+    if (!registeredDynamicRoutes.has(name)) {
+      console.warn(`[Router] Route ${name} is not a dynamic route`)
+      return false
+    }
+
+    if (router.hasRoute(name)) {
+      router.removeRoute(name)
+      registeredDynamicRoutes.delete(name)
+      console.log(`[Router] Removed dynamic route: ${name}`)
+      return true
+    }
+
+    return false
+  },
+
+  /**
+   * 移除插件的所有路由
+   */
+  removePluginRoutes(pluginId: string): void {
+    const routesToRemove: string[] = []
+
+    for (const route of router.getRoutes()) {
+      if (route.meta?.pluginId === pluginId && route.name) {
+        routesToRemove.push(route.name as string)
+      }
+    }
+
+    for (const name of routesToRemove) {
+      this.removeRoute(name)
+    }
+  },
+
+  /**
+   * 获取所有动态路由
+   */
+  getDynamicRoutes(): RouteRecordRaw[] {
+    return router.getRoutes().filter(r => r.meta?.dynamic)
+  },
+
+  /**
+   * 检查路由是否存在
+   */
+  hasRoute(name: string): boolean {
+    return router.hasRoute(name)
+  },
+
+  /**
+   * 批量注册路由
+   */
+  addRoutes(routes: Array<{
+    path: string
+    name: string
+    component?: () => Promise<unknown>
+    pluginId?: string
+    meta?: Record<string, unknown>
+  }>): void {
+    for (const route of routes) {
+      this.addRoute(route)
+    }
+  }
+}
+
+/**
+ * 初始化插件路由
+ * 从插件系统加载动态路由
+ */
+export async function initPluginRoutes(): Promise<void> {
+  try {
+    // 检查 electronAPI 是否可用
+    if (typeof window !== 'undefined' && window.electronAPI?.plugin?.getRoutes) {
+      const pluginRoutes = await window.electronAPI.plugin.getRoutes()
+
+      for (const route of pluginRoutes) {
+        dynamicRouteManager.addRoute({
+          path: route.path,
+          name: route.name,
+          pluginId: route.pluginId,
+          meta: route.meta
+        })
+      }
+
+      console.log(`[Router] Loaded ${pluginRoutes.length} plugin routes`)
+    }
+  } catch (error) {
+    console.error('[Router] Failed to load plugin routes:', error)
+  }
+}
 
 export default router

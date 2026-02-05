@@ -438,10 +438,129 @@ export function setupIpcHandlers() {
   })
 
   // ==================== AI 功能 ====================
+
+  // 设置工具执行器
+  aiGateway.setToolExecutor({
+    executeCommand: async (serverId, command, args, options) => {
+      const client = serverConnections.get(serverId)
+      if (!client) throw new Error('Server not connected')
+      return await client.executeCommand(command, args, options)
+    },
+    listContainers: async (serverId, all) => {
+      const client = serverConnections.get(serverId)
+      if (!client) throw new Error('Server not connected')
+      return await client.listContainers(all)
+    },
+    containerAction: async (serverId, containerId, action) => {
+      const client = serverConnections.get(serverId)
+      if (!client) throw new Error('Server not connected')
+      return await client.containerAction(containerId, action)
+    },
+    containerLogs: async (serverId, containerId, tail) => {
+      const client = serverConnections.get(serverId)
+      if (!client) throw new Error('Server not connected')
+      return await client.containerLogs(containerId, tail)
+    },
+    readFile: async (serverId, path) => {
+      const client = serverConnections.get(serverId)
+      if (!client) throw new Error('Server not connected')
+      return await client.readFile(path)
+    },
+    writeFile: async (serverId, path, content) => {
+      const client = serverConnections.get(serverId)
+      if (!client) throw new Error('Server not connected')
+      return await client.writeFile(path, content)
+    },
+    listDirectory: async (serverId, path, recursive) => {
+      const client = serverConnections.get(serverId)
+      if (!client) throw new Error('Server not connected')
+      return await client.listDirectory(path, recursive)
+    },
+    deleteFile: async (serverId, path) => {
+      const client = serverConnections.get(serverId)
+      if (!client) throw new Error('Server not connected')
+      return await client.deleteFile(path)
+    },
+    getSystemInfo: async (serverId) => {
+      const client = serverConnections.get(serverId)
+      if (!client) throw new Error('Server not connected')
+      return await client.getSystemInfo()
+    },
+    listServices: async (serverId) => {
+      const client = serverConnections.get(serverId)
+      if (!client) throw new Error('Server not connected')
+      return await client.listServices()
+    },
+    serviceAction: async (serverId, name, action) => {
+      const client = serverConnections.get(serverId)
+      if (!client) throw new Error('Server not connected')
+      return await client.serviceAction(name, action)
+    },
+    listProcesses: async (serverId) => {
+      const client = serverConnections.get(serverId)
+      if (!client) throw new Error('Server not connected')
+      return await client.listProcesses()
+    },
+    killProcess: async (serverId, pid, signal) => {
+      const client = serverConnections.get(serverId)
+      if (!client) throw new Error('Server not connected')
+      return await client.killProcess(pid, signal)
+    },
+    listImages: async (serverId, all) => {
+      const client = serverConnections.get(serverId)
+      if (!client) throw new Error('Server not connected')
+      return await client.listImages(all)
+    },
+    pullImage: async (serverId, image, tag) => {
+      const client = serverConnections.get(serverId)
+      if (!client) throw new Error('Server not connected')
+      return await client.pullImage(image, tag)
+    },
+    removeImage: async (serverId, imageId, force) => {
+      const client = serverConnections.get(serverId)
+      if (!client) throw new Error('Server not connected')
+      return await client.removeImage(imageId, force)
+    },
+    listNetworks: async (serverId) => {
+      const client = serverConnections.get(serverId)
+      if (!client) throw new Error('Server not connected')
+      return await client.listNetworks()
+    },
+    listVolumes: async (serverId) => {
+      const client = serverConnections.get(serverId)
+      if (!client) throw new Error('Server not connected')
+      return await client.listVolumes()
+    }
+  })
+
   ipcMain.handle('ai:chat', async (event, message: string, context?: AIContext) => {
     return await aiGateway.chat(message, context, (chunk) => {
       event.sender.send('ai:stream', chunk)
     })
+  })
+
+  ipcMain.handle('ai:executeAgent', async (event, message: string, context?: AIContext) => {
+    // 转发 Agent 事件到渲染进程
+    const onStep = (step: any) => event.sender.send('ai:agent:step', step)
+    const onPlan = (plan: any) => event.sender.send('ai:agent:plan', plan)
+    const onConfirm = (data: any) => event.sender.send('ai:agent:confirm', data)
+
+    aiGateway.on('agent:step', onStep)
+    aiGateway.on('agent:plan', onPlan)
+    aiGateway.on('agent:confirm', onConfirm)
+
+    try {
+      const result = await aiGateway.executeAgent(message, context || {})
+      return result
+    } finally {
+      aiGateway.off('agent:step', onStep)
+      aiGateway.off('agent:plan', onPlan)
+      aiGateway.off('agent:confirm', onConfirm)
+    }
+  })
+
+  ipcMain.handle('ai:getAvailableTools', async () => {
+    return aiGateway.getAvailableTools()
   })
 
   ipcMain.handle('ai:setProvider', async (_, provider: string, config: any) => {

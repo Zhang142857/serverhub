@@ -2,11 +2,18 @@
   <div class="cloud-page">
     <div class="page-header">
       <h1>云服务集成</h1>
-      <p class="subtitle">管理您的云服务商账号和资源</p>
+      <p class="subtitle">通过插件扩展云服务管理能力</p>
     </div>
 
     <!-- 统计卡片 -->
     <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-icon installed"><el-icon><CircleCheck /></el-icon></div>
+        <div class="stat-info">
+          <span class="stat-value">{{ installedCloudPlugins.length }}</span>
+          <span class="stat-label">已安装</span>
+        </div>
+      </div>
       <div class="stat-card">
         <div class="stat-icon connected"><el-icon><Link /></el-icon></div>
         <div class="stat-info">
@@ -15,49 +22,52 @@
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon total"><el-icon><Cloudy /></el-icon></div>
+        <div class="stat-icon available"><el-icon><Cloudy /></el-icon></div>
         <div class="stat-info">
-          <span class="stat-value">{{ providers.length }}</span>
-          <span class="stat-label">支持的服务商</span>
+          <span class="stat-value">{{ cloudProviders.length }}</span>
+          <span class="stat-label">可用服务</span>
         </div>
       </div>
     </div>
 
-    <!-- 已连接的服务商 -->
-    <div v-if="connectedProviders.length > 0" class="section">
-      <h2>已连接的服务</h2>
-      <div class="connected-providers">
+    <!-- 已安装的云服务插件 -->
+    <div v-if="installedCloudPlugins.length > 0" class="section">
+      <h2>已安装的云服务</h2>
+      <div class="installed-plugins">
         <el-card
-          v-for="provider in connectedProviders"
-          :key="provider.id"
-          class="connected-card"
-          @click="manageProvider(provider)"
+          v-for="plugin in installedCloudPlugins"
+          :key="plugin.id"
+          class="plugin-card installed"
+          @click="openCloudService(plugin)"
         >
           <div class="card-header">
-            <span class="provider-emoji">{{ provider.emoji }}</span>
-            <div class="provider-title">
-              <h3>{{ provider.name }}</h3>
-              <el-tag type="success" size="small">已连接</el-tag>
+            <span class="plugin-emoji">{{ plugin.icon }}</span>
+            <div class="plugin-title">
+              <h3>{{ plugin.name }}</h3>
+              <el-tag :type="plugin.connected ? 'success' : 'info'" size="small">
+                {{ plugin.connected ? '已连接' : '未配置' }}
+              </el-tag>
             </div>
-            <el-dropdown @command="handleProviderAction($event, provider)" trigger="click">
+            <el-dropdown @command="handlePluginAction($event, plugin)" trigger="click">
               <el-button text @click.stop>
                 <el-icon><MoreFilled /></el-icon>
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="manage">管理</el-dropdown-item>
-                  <el-dropdown-item command="refresh">刷新</el-dropdown-item>
-                  <el-dropdown-item command="disconnect" divided>断开连接</el-dropdown-item>
+                  <el-dropdown-item command="open">打开</el-dropdown-item>
+                  <el-dropdown-item command="config">配置</el-dropdown-item>
+                  <el-dropdown-item command="disable" divided>禁用</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
           </div>
-          <div class="quick-actions">
+          <p class="plugin-desc">{{ plugin.description }}</p>
+          <div class="quick-actions" v-if="plugin.quickActions">
             <el-button
-              v-for="action in provider.quickActions"
+              v-for="action in plugin.quickActions"
               :key="action.name"
               size="small"
-              @click.stop="executeQuickAction(provider, action)"
+              @click.stop="executeQuickAction(plugin, action)"
             >
               {{ action.name }}
             </el-button>
@@ -66,32 +76,65 @@
       </div>
     </div>
 
-    <!-- 可用的服务商 -->
+    <!-- 可用的云服务插件 -->
     <div class="section">
-      <h2>{{ connectedProviders.length > 0 ? '添加更多服务' : '选择云服务商' }}</h2>
+      <h2>{{ installedCloudPlugins.length > 0 ? '添加更多云服务' : '选择云服务' }}</h2>
+      <p class="section-desc">安装云服务插件以管理您的云资源</p>
       <div class="provider-grid">
         <el-card
           v-for="provider in availableProviders"
           :key="provider.id"
           class="provider-card"
-          @click="connectProvider(provider)"
+          :class="{ 'coming-soon': !provider.pluginAvailable }"
         >
-          <div class="provider-icon">{{ provider.emoji }}</div>
+          <div class="provider-icon">{{ provider.icon }}</div>
           <div class="provider-info">
             <h3>{{ provider.name }}</h3>
             <p>{{ provider.description }}</p>
+            <div class="provider-features">
+              <el-tag v-for="feature in provider.features.slice(0, 3)" :key="feature" size="small" type="info">
+                {{ feature }}
+              </el-tag>
+            </div>
           </div>
-          <el-button type="primary" size="small">连接</el-button>
+          <el-button
+            v-if="provider.pluginAvailable"
+            type="primary"
+            size="small"
+            @click="installCloudPlugin(provider)"
+            :loading="installingPlugins.has(provider.pluginId)"
+          >
+            安装插件
+          </el-button>
+          <el-tag v-else type="info" size="small">即将推出</el-tag>
         </el-card>
       </div>
     </div>
 
+    <!-- 快速配置（向后兼容） -->
+    <div class="section legacy-section">
+      <div class="section-header">
+        <h2>快速配置</h2>
+        <el-tag type="warning" size="small">传统模式</el-tag>
+      </div>
+      <p class="section-desc">直接配置云服务 API（不使用插件）</p>
+      <div class="legacy-providers">
+        <div
+          v-for="provider in legacyProviders"
+          :key="provider.id"
+          class="legacy-item"
+          @click="configureLegacy(provider)"
+        >
+          <span class="legacy-icon">{{ provider.icon }}</span>
+          <span class="legacy-name">{{ provider.name }}</span>
+          <el-tag v-if="provider.connected" type="success" size="small">已连接</el-tag>
+          <el-icon class="arrow"><ArrowRight /></el-icon>
+        </div>
+      </div>
+    </div>
+
     <!-- 配置对话框 -->
-    <el-dialog
-      v-model="showConfigDialog"
-      :title="`连接 ${currentProvider?.name || ''}`"
-      width="500px"
-    >
+    <el-dialog v-model="showConfigDialog" :title="`连接 ${currentProvider?.name || ''}`" width="500px">
       <el-form v-if="currentProvider" label-width="120px">
         <el-form-item
           v-for="field in configFields[currentProvider.id] || []"
@@ -115,98 +158,102 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Link, Cloudy, MoreFilled } from '@element-plus/icons-vue'
-
-const router = useRouter()
+import { Link, Cloudy, MoreFilled, CircleCheck, ArrowRight } from '@element-plus/icons-vue'
+import { usePluginStore } from '@/stores/plugin'
 
 interface QuickAction {
   name: string
   action: string
+  route?: string
+}
+
+interface CloudPlugin {
+  id: string
+  name: string
+  description: string
+  icon: string
+  connected: boolean
+  quickActions?: QuickAction[]
 }
 
 interface CloudProvider {
   id: string
   name: string
   description: string
-  emoji: string
-  connected: boolean
-  config?: Record<string, string>
-  quickActions: QuickAction[]
+  icon: string
+  features: string[]
+  pluginId?: string
+  pluginAvailable: boolean
 }
 
-const showConfigDialog = ref(false)
-const currentProvider = ref<CloudProvider | null>(null)
-const configForm = ref<Record<string, string>>({})
+interface LegacyProvider {
+  id: string
+  name: string
+  icon: string
+  connected: boolean
+}
 
-const providers = ref<CloudProvider[]>([
+const router = useRouter()
+const pluginStore = usePluginStore()
+
+const showConfigDialog = ref(false)
+const currentProvider = ref<LegacyProvider | null>(null)
+const configForm = ref<Record<string, string>>({})
+const installingPlugins = ref<Set<string>>(new Set())
+
+// 云服务提供商列表
+const cloudProviders = ref<CloudProvider[]>([
   {
     id: 'cloudflare',
     name: 'Cloudflare',
-    description: 'DNS、CDN、WAF、SSL证书、Tunnel',
-    emoji: '☁️',
-    connected: false,
-    quickActions: [
-      { name: 'DNS 管理', action: 'dns' },
-      { name: '域名列表', action: 'domains' },
-      { name: '清除缓存', action: 'purge' }
-    ]
+    description: 'DNS、CDN、WAF、SSL证书、Tunnel 管理',
+    icon: '☁️',
+    features: ['DNS管理', 'CDN加速', 'WAF防护', 'SSL证书', '安全防护'],
+    pluginId: 'cloudflare',
+    pluginAvailable: true
   },
   {
     id: 'aws',
     name: 'Amazon Web Services',
-    description: 'EC2、S3、Route53、CloudWatch',
-    emoji: '🔶',
-    connected: false,
-    quickActions: [
-      { name: 'EC2 实例', action: 'ec2' },
-      { name: 'S3 存储桶', action: 's3' }
-    ]
+    description: 'EC2、S3、Route53、CloudWatch 管理',
+    icon: '🔶',
+    features: ['EC2实例', 'S3存储', 'Route53', 'CloudWatch'],
+    pluginId: 'aws',
+    pluginAvailable: false
   },
   {
     id: 'aliyun',
     name: '阿里云',
-    description: 'ECS、OSS、DNS、CDN',
-    emoji: '🟠',
-    connected: false,
-    quickActions: [
-      { name: 'ECS 实例', action: 'ecs' },
-      { name: 'OSS 存储', action: 'oss' }
-    ]
+    description: 'ECS、OSS、DNS、CDN 管理',
+    icon: '🟠',
+    features: ['ECS实例', 'OSS存储', 'DNS解析', 'CDN加速'],
+    pluginId: 'aliyun',
+    pluginAvailable: false
   },
   {
     id: 'tencent',
     name: '腾讯云',
-    description: 'CVM、COS、DNS',
-    emoji: '🔵',
-    connected: false,
-    quickActions: [
-      { name: 'CVM 实例', action: 'cvm' },
-      { name: 'COS 存储', action: 'cos' }
-    ]
+    description: 'CVM、COS、DNS 管理',
+    icon: '🔵',
+    features: ['CVM实例', 'COS存储', 'DNS解析'],
+    pluginId: 'tencent',
+    pluginAvailable: false
   },
   {
     id: 'digitalocean',
     name: 'DigitalOcean',
-    description: 'Droplet、Spaces',
-    emoji: '🌊',
-    connected: false,
-    quickActions: [
-      { name: 'Droplets', action: 'droplets' },
-      { name: 'Spaces', action: 'spaces' }
-    ]
+    description: 'Droplet、Spaces 管理',
+    icon: '🌊',
+    features: ['Droplets', 'Spaces存储', 'Kubernetes'],
+    pluginId: 'digitalocean',
+    pluginAvailable: false
   }
 ])
 
-// 加载保存的配置
-loadSavedConfigs()
-
-const connectedCount = computed(() => providers.value.filter(p => p.connected).length)
-const connectedProviders = computed(() => providers.value.filter(p => p.connected))
-const availableProviders = computed(() => providers.value.filter(p => !p.connected))
-
+// 传统配置字段
 const configFields: Record<string, { label: string; type: string; placeholder: string }[]> = {
   cloudflare: [
     { label: 'API Token', type: 'password', placeholder: '输入 Cloudflare API Token' },
@@ -230,32 +277,130 @@ const configFields: Record<string, { label: string; type: string; placeholder: s
   ]
 }
 
-function loadSavedConfigs() {
+// 已安装的云服务插件
+const installedCloudPlugins = computed<CloudPlugin[]>(() => {
+  const cloudPluginIds = cloudProviders.value.map(p => p.pluginId).filter(Boolean)
+  return pluginStore.enabledPlugins
+    .filter(p => cloudPluginIds.includes(p.id))
+    .map(p => {
+      const provider = cloudProviders.value.find(cp => cp.pluginId === p.id)
+      return {
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        icon: p.icon || provider?.icon || '☁️',
+        connected: checkPluginConnected(p.id),
+        quickActions: getQuickActions(p.id)
+      }
+    })
+})
+
+// 可用的云服务提供商（未安装插件的）
+const availableProviders = computed(() => {
+  const installedIds = installedCloudPlugins.value.map(p => p.id)
+  return cloudProviders.value.filter(p => !installedIds.includes(p.pluginId || ''))
+})
+
+// 传统模式提供商
+const legacyProviders = computed<LegacyProvider[]>(() => {
+  return cloudProviders.value.map(p => ({
+    id: p.id,
+    name: p.name,
+    icon: p.icon,
+    connected: checkLegacyConnected(p.id)
+  }))
+})
+
+const connectedCount = computed(() => {
+  return installedCloudPlugins.value.filter(p => p.connected).length +
+    legacyProviders.value.filter(p => p.connected).length
+})
+
+function checkPluginConnected(pluginId: string): boolean {
+  // 检查插件是否已配置（通过安全存储）
+  // 这里简化处理，实际应该异步检查
+  return false
+}
+
+function checkLegacyConnected(providerId: string): boolean {
   const saved = localStorage.getItem('serverhub_cloud_providers')
   if (saved) {
     try {
       const configs = JSON.parse(saved)
-      providers.value.forEach(p => {
-        if (configs[p.id]) {
-          p.connected = true
-          p.config = configs[p.id]
-        }
-      })
+      return !!configs[providerId]
     } catch { /* ignore */ }
+  }
+  return false
+}
+
+function getQuickActions(pluginId: string): QuickAction[] {
+  const actionsMap: Record<string, QuickAction[]> = {
+    cloudflare: [
+      { name: 'DNS 管理', action: 'dns', route: '/cloud/cloudflare?tab=dns' },
+      { name: '安全设置', action: 'security', route: '/cloud/cloudflare?tab=security' },
+      { name: '清除缓存', action: 'purge' }
+    ]
+  }
+  return actionsMap[pluginId] || []
+}
+
+function openCloudService(plugin: CloudPlugin) {
+  if (plugin.id === 'cloudflare') {
+    router.push('/cloud/cloudflare')
+  } else {
+    router.push(`/plugin/${plugin.id}`)
   }
 }
 
-function saveConfigs() {
-  const configs: Record<string, Record<string, string>> = {}
-  providers.value.forEach(p => {
-    if (p.connected && p.config) {
-      configs[p.id] = p.config
-    }
-  })
-  localStorage.setItem('serverhub_cloud_providers', JSON.stringify(configs))
+function handlePluginAction(action: string, plugin: CloudPlugin) {
+  switch (action) {
+    case 'open':
+      openCloudService(plugin)
+      break
+    case 'config':
+      router.push(`/plugin/${plugin.id}?config=true`)
+      break
+    case 'disable':
+      disablePlugin(plugin)
+      break
+  }
 }
 
-function connectProvider(provider: CloudProvider) {
+async function disablePlugin(plugin: CloudPlugin) {
+  await ElMessageBox.confirm(`确定要禁用 ${plugin.name} 插件吗？`, '确认')
+  try {
+    await pluginStore.disablePlugin(plugin.id)
+    ElMessage.success(`${plugin.name} 已禁用`)
+  } catch (e) {
+    ElMessage.error('禁用失败: ' + (e as Error).message)
+  }
+}
+
+function executeQuickAction(plugin: CloudPlugin, action: QuickAction) {
+  if (action.route) {
+    router.push(action.route)
+  } else if (action.action === 'purge') {
+    ElMessage.info('请在插件页面中清除缓存')
+    openCloudService(plugin)
+  }
+}
+
+async function installCloudPlugin(provider: CloudProvider) {
+  if (!provider.pluginId) return
+
+  installingPlugins.value.add(provider.pluginId)
+  try {
+    await pluginStore.installPlugin(provider.pluginId)
+    await pluginStore.enablePlugin(provider.pluginId)
+    ElMessage.success(`${provider.name} 插件安装成功`)
+  } catch (e) {
+    ElMessage.error('安装失败: ' + (e as Error).message)
+  } finally {
+    installingPlugins.value.delete(provider.pluginId)
+  }
+}
+
+function configureLegacy(provider: LegacyProvider) {
   currentProvider.value = provider
   configForm.value = {}
   showConfigDialog.value = true
@@ -271,94 +416,27 @@ function saveConfig() {
     return
   }
 
-  currentProvider.value.connected = true
-  currentProvider.value.config = { ...configForm.value }
-  saveConfigs()
+  // 保存配置
+  const saved = localStorage.getItem('serverhub_cloud_providers')
+  let configs: Record<string, Record<string, string>> = {}
+  if (saved) {
+    try {
+      configs = JSON.parse(saved)
+    } catch { /* ignore */ }
+  }
+  configs[currentProvider.value.id] = { ...configForm.value }
+  localStorage.setItem('serverhub_cloud_providers', JSON.stringify(configs))
+
   showConfigDialog.value = false
   ElMessage.success(`${currentProvider.value.name} 已连接`)
+
+  // 跳转到对应页面
+  router.push(`/cloud/${currentProvider.value.id}`)
 }
 
-function manageProvider(provider: CloudProvider) {
-  if (provider.id === 'cloudflare') {
-    router.push('/cloud/cloudflare')
-  } else if (provider.id === 'aws') {
-    router.push('/cloud/aws')
-  } else if (provider.id === 'aliyun') {
-    router.push('/cloud/aliyun')
-  } else if (provider.id === 'tencent') {
-    router.push('/cloud/tencent')
-  } else if (provider.id === 'digitalocean') {
-    router.push('/cloud/digitalocean')
-  } else {
-    ElMessage.info(`${provider.name} 管理面板即将推出`)
-  }
-}
-
-function handleProviderAction(action: string, provider: CloudProvider) {
-  switch (action) {
-    case 'manage':
-      manageProvider(provider)
-      break
-    case 'refresh':
-      ElMessage.success('已刷新')
-      break
-    case 'disconnect':
-      ElMessageBox.confirm(`确定要断开 ${provider.name} 的连接吗？`, '确认').then(() => {
-        provider.connected = false
-        provider.config = undefined
-        saveConfigs()
-        ElMessage.info('已断开连接')
-      }).catch(() => {})
-      break
-  }
-}
-
-function executeQuickAction(provider: CloudProvider, action: QuickAction) {
-  if (provider.id === 'cloudflare') {
-    // Navigate to Cloudflare page with specific tab
-    const tabMap: Record<string, string> = {
-      dns: 'dns',
-      domains: 'dns',
-      purge: 'cache'
-    }
-    const tab = tabMap[action.action] || 'dns'
-    router.push(`/cloud/cloudflare?tab=${tab}`)
-  } else if (provider.id === 'aws') {
-    // Navigate to AWS page with specific tab
-    const tabMap: Record<string, string> = {
-      ec2: 'ec2',
-      s3: 's3'
-    }
-    const tab = tabMap[action.action] || 'ec2'
-    router.push(`/cloud/aws?tab=${tab}`)
-  } else if (provider.id === 'aliyun') {
-    // Navigate to Aliyun page with specific tab
-    const tabMap: Record<string, string> = {
-      ecs: 'ecs',
-      oss: 'oss'
-    }
-    const tab = tabMap[action.action] || 'ecs'
-    router.push(`/cloud/aliyun?tab=${tab}`)
-  } else if (provider.id === 'tencent') {
-    // Navigate to Tencent Cloud page with specific tab
-    const tabMap: Record<string, string> = {
-      cvm: 'cvm',
-      cos: 'cos'
-    }
-    const tab = tabMap[action.action] || 'cvm'
-    router.push(`/cloud/tencent?tab=${tab}`)
-  } else if (provider.id === 'digitalocean') {
-    // Navigate to DigitalOcean page with specific tab
-    const tabMap: Record<string, string> = {
-      droplets: 'droplets',
-      spaces: 'spaces'
-    }
-    const tab = tabMap[action.action] || 'droplets'
-    router.push(`/cloud/digitalocean?tab=${tab}`)
-  } else {
-    ElMessage.info(`${provider.name} - ${action.name} 功能即将推出`)
-  }
-}
+onMounted(() => {
+  pluginStore.initialize()
+})
 </script>
 
 <style lang="scss" scoped>
@@ -394,7 +472,7 @@ function executeQuickAction(provider: CloudProvider, action: QuickAction) {
     padding: 20px 24px;
     background: var(--bg-secondary);
     border-radius: 12px;
-    min-width: 180px;
+    min-width: 160px;
 
     .stat-icon {
       width: 48px;
@@ -405,14 +483,19 @@ function executeQuickAction(provider: CloudProvider, action: QuickAction) {
       justify-content: center;
       font-size: 24px;
 
-      &.connected {
+      &.installed {
         background: rgba(var(--el-color-success-rgb), 0.1);
         color: var(--el-color-success);
       }
 
-      &.total {
+      &.connected {
         background: rgba(var(--el-color-primary-rgb), 0.1);
         color: var(--el-color-primary);
+      }
+
+      &.available {
+        background: rgba(var(--el-color-warning-rgb), 0.1);
+        color: var(--el-color-warning);
       }
     }
 
@@ -439,53 +522,75 @@ function executeQuickAction(provider: CloudProvider, action: QuickAction) {
   h2 {
     font-size: 16px;
     font-weight: 600;
-    margin-bottom: 16px;
+    margin-bottom: 8px;
+  }
+
+  .section-desc {
     color: var(--text-secondary);
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
   }
 }
 
-.connected-providers {
+.installed-plugins {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 16px;
+}
 
-  .connected-card {
-    cursor: pointer;
-    transition: all 0.2s;
+.plugin-card {
+  cursor: pointer;
+  transition: all 0.2s;
 
-    &:hover {
-      border-color: var(--el-color-primary);
+  &:hover {
+    border-color: var(--el-color-primary);
+  }
+
+  &.installed {
+    border-left: 3px solid var(--el-color-success);
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+
+    .plugin-emoji {
+      font-size: 32px;
     }
 
-    .card-header {
+    .plugin-title {
+      flex: 1;
       display: flex;
       align-items: center;
-      gap: 12px;
-      margin-bottom: 16px;
-
-      .provider-emoji {
-        font-size: 32px;
-      }
-
-      .provider-title {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-
-        h3 {
-          font-size: 16px;
-          font-weight: 600;
-          margin: 0;
-        }
-      }
-    }
-
-    .quick-actions {
-      display: flex;
-      flex-wrap: wrap;
       gap: 8px;
+
+      h3 {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0;
+      }
     }
+  }
+
+  .plugin-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+  }
+
+  .quick-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 }
 
@@ -497,35 +602,89 @@ function executeQuickAction(provider: CloudProvider, action: QuickAction) {
 
 .provider-card {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding: 20px;
-  cursor: pointer;
+  text-align: center;
+  padding: 24px 20px;
   transition: all 0.2s;
 
-  &:hover {
+  &:hover:not(.coming-soon) {
     border-color: var(--el-color-primary);
   }
 
+  &.coming-soon {
+    opacity: 0.7;
+  }
+
   .provider-icon {
-    font-size: 40px;
-    flex-shrink: 0;
+    font-size: 48px;
+    margin-bottom: 12px;
   }
 
   .provider-info {
     flex: 1;
+    margin-bottom: 16px;
 
     h3 {
-      font-size: 15px;
+      font-size: 16px;
       font-weight: 600;
-      margin-bottom: 4px;
+      margin-bottom: 8px;
     }
 
     p {
-      font-size: 12px;
+      font-size: 13px;
       color: var(--text-secondary);
-      margin: 0;
+      margin-bottom: 12px;
     }
+
+    .provider-features {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 6px;
+    }
+  }
+}
+
+.legacy-section {
+  background: var(--bg-secondary);
+  padding: 20px;
+  border-radius: 12px;
+  margin-top: 40px;
+}
+
+.legacy-providers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.legacy-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--bg-primary);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: var(--bg-tertiary);
+  }
+
+  .legacy-icon {
+    font-size: 20px;
+  }
+
+  .legacy-name {
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .arrow {
+    margin-left: auto;
+    color: var(--text-secondary);
   }
 }
 </style>

@@ -398,59 +398,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, Setting, Refresh } from '@element-plus/icons-vue'
+import { usePluginStore, type PluginInfo, type MarketPlugin } from '@/stores/plugin'
 
-interface PluginConfig {
-  label: string
-  type: 'boolean' | 'string' | 'number' | 'select'
-  value: boolean | string | number
-  hint?: string
-  options?: { label: string; value: string | number }[]
-}
-
-interface ChangelogEntry {
-  version: string
-  date: string
-  changes: string[]
-}
-
-interface Review {
-  id: string
-  user: string
-  rating: number
-  content: string
-  date: string
-}
-
-interface Plugin {
-  id: string
-  name: string
-  description: string
-  icon: string
-  author: string
-  official: boolean
-  rating: number
-  ratingCount: number
-  ratingDistribution: number[]
-  downloads: number
-  installed: boolean
-  enabled: boolean
-  version: string
-  latestVersion: string
-  hasUpdate: boolean
-  category: string
-  tags: string[]
-  features: string[]
-  dependencies?: string[]
-  updatedAt: string
-  changelog: ChangelogEntry[]
-  reviews: Review[]
-  config?: Record<string, PluginConfig>
-  installing?: boolean
-  updating?: boolean
-}
+const pluginStore = usePluginStore()
 
 const searchQuery = ref('')
 const activeTab = ref('all')
@@ -458,16 +411,17 @@ const selectedCategory = ref('')
 const sortBy = ref('downloads')
 const showDetailDialog = ref(false)
 const showConfigDialog = ref(false)
-const currentPlugin = ref<Plugin | null>(null)
-const configPlugin = ref<Plugin | null>(null)
+const currentPlugin = ref<MarketPlugin | null>(null)
+const configPlugin = ref<PluginInfo | null>(null)
 const detailTab = ref('description')
 const checkingUpdates = ref(false)
 const updatingAll = ref(false)
 const userRating = ref(0)
 const userReview = ref('')
+const installingPlugins = ref<Set<string>>(new Set())
 
 const categories = [
-  { id: 'server', name: '服务器', icon: '🖥️' },
+  { id: 'security', name: '安全', icon: '🛡️' },
   { id: 'database', name: '数据库', icon: '🗄️' },
   { id: 'web', name: 'Web服务', icon: '🌐' },
   { id: 'monitor', name: '监控', icon: '📊' },
@@ -475,236 +429,37 @@ const categories = [
   { id: 'tools', name: '工具', icon: '🔧' }
 ]
 
-const plugins = ref<Plugin[]>([
-  {
-    id: 'docker',
-    name: 'Docker 管理',
-    description: '完整的 Docker 容器和镜像管理功能，支持容器创建、启停、日志查看等',
-    icon: '🐳',
-    author: 'ServerHub',
-    official: true,
-    rating: 4.8,
-    ratingCount: 256,
-    ratingDistribution: [180, 50, 15, 8, 3],
-    downloads: 8500,
-    installed: true,
-    enabled: true,
-    version: '1.0.0',
-    latestVersion: '1.1.0',
-    hasUpdate: true,
-    category: 'server',
-    tags: ['容器', 'Docker', '虚拟化'],
-    features: ['容器管理', '镜像管理', '网络配置', '数据卷管理', '日志查看'],
-    updatedAt: '2024-01-15',
-    changelog: [
-      { version: '1.1.0', date: '2024-01-15', changes: ['新增容器资源限制配置', '优化镜像拉取速度', '修复日志显示问题'] },
-      { version: '1.0.0', date: '2023-12-01', changes: ['首次发布', '支持基本容器管理', '支持镜像管理'] }
-    ],
-    reviews: [
-      { id: '1', user: 'DevOps小王', rating: 5, content: '非常好用的Docker管理插件，界面简洁，功能强大！', date: '2024-01-10' },
-      { id: '2', user: '运维老张', rating: 4, content: '基本功能都有，希望能增加Docker Compose支持', date: '2024-01-05' }
-    ],
-    config: {
-      autoRefresh: { label: '自动刷新', type: 'boolean', value: true, hint: '自动刷新容器状态' },
-      refreshInterval: { label: '刷新间隔(秒)', type: 'number', value: 5 },
-      showStoppedContainers: { label: '显示已停止容器', type: 'boolean', value: true }
+// 合并已安装插件和市场插件
+const allPlugins = computed(() => {
+  const installed = pluginStore.plugins
+  const market = pluginStore.marketPlugins
+
+  return market.map(mp => {
+    const installedPlugin = installed.find(ip => ip.id === mp.id)
+    return {
+      ...mp,
+      installed: !!installedPlugin,
+      enabled: installedPlugin?.status === 'enabled',
+      installedVersion: installedPlugin?.version,
+      hasUpdate: installedPlugin ? installedPlugin.version !== mp.version : false,
+      installing: installingPlugins.value.has(mp.id)
     }
-  },
-  {
-    id: 'nginx',
-    name: 'Nginx 管理',
-    description: '可视化管理 Nginx 配置、虚拟主机和 SSL 证书',
-    icon: '🌐',
-    author: 'ServerHub',
-    official: true,
-    rating: 4.6,
-    ratingCount: 189,
-    ratingDistribution: [120, 45, 15, 6, 3],
-    downloads: 6200,
-    installed: false,
-    enabled: false,
-    version: '1.0.0',
-    latestVersion: '1.0.0',
-    hasUpdate: false,
-    category: 'web',
-    tags: ['Web服务器', 'Nginx', '反向代理'],
-    features: ['虚拟主机管理', 'SSL证书配置', '反向代理设置', '负载均衡', '配置可视化'],
-    updatedAt: '2024-01-10',
-    changelog: [
-      { version: '1.0.0', date: '2024-01-10', changes: ['首次发布', '支持虚拟主机管理', '支持SSL证书配置'] }
-    ],
-    reviews: [
-      { id: '1', user: '前端开发者', rating: 5, content: '配置Nginx变得简单多了', date: '2024-01-08' }
-    ]
-  },
-  {
-    id: 'mysql',
-    name: 'MySQL 管理',
-    description: '数据库管理、备份恢复、性能监控',
-    icon: '🗄️',
-    author: 'ServerHub',
-    official: true,
-    rating: 4.5,
-    ratingCount: 167,
-    ratingDistribution: [100, 40, 18, 6, 3],
-    downloads: 5100,
-    installed: false,
-    enabled: false,
-    version: '1.0.0',
-    latestVersion: '1.0.0',
-    hasUpdate: false,
-    category: 'database',
-    tags: ['数据库', 'MySQL', 'SQL'],
-    features: ['数据库管理', '用户权限', '备份恢复', '性能监控', 'SQL执行'],
-    updatedAt: '2024-01-08',
-    changelog: [
-      { version: '1.0.0', date: '2024-01-08', changes: ['首次发布'] }
-    ],
-    reviews: []
-  },
-  {
-    id: 'redis',
-    name: 'Redis 管理',
-    description: 'Redis 数据库可视化管理，支持键值浏览、监控',
-    icon: '🔴',
-    author: 'ServerHub',
-    official: true,
-    rating: 4.4,
-    ratingCount: 134,
-    ratingDistribution: [80, 35, 12, 5, 2],
-    downloads: 4300,
-    installed: false,
-    enabled: false,
-    version: '1.0.0',
-    latestVersion: '1.0.0',
-    hasUpdate: false,
-    category: 'database',
-    tags: ['数据库', 'Redis', '缓存'],
-    features: ['键值浏览', '数据编辑', '性能监控', '内存分析'],
-    updatedAt: '2024-01-05',
-    changelog: [
-      { version: '1.0.0', date: '2024-01-05', changes: ['首次发布'] }
-    ],
-    reviews: []
-  },
-  {
-    id: 'minecraft',
-    name: 'Minecraft 服务器',
-    description: '管理 Minecraft 服务器、玩家、插件',
-    icon: '⛏️',
-    author: 'Community',
-    official: false,
-    rating: 4.7,
-    ratingCount: 312,
-    ratingDistribution: [220, 60, 20, 8, 4],
-    downloads: 3800,
-    installed: false,
-    enabled: false,
-    version: '0.9.0',
-    latestVersion: '0.9.0',
-    hasUpdate: false,
-    category: 'game',
-    tags: ['游戏', 'Minecraft', '服务器'],
-    features: ['服务器控制', '玩家管理', '插件管理', '世界备份', '控制台'],
-    dependencies: ['docker'],
-    updatedAt: '2024-01-12',
-    changelog: [
-      { version: '0.9.0', date: '2024-01-12', changes: ['新增玩家管理', '优化控制台性能'] }
-    ],
-    reviews: [
-      { id: '1', user: 'MC服主', rating: 5, content: '管理MC服务器必备！', date: '2024-01-11' }
-    ]
-  },
-  {
-    id: 'backup',
-    name: '自动备份',
-    description: '定时备份文件和数据库到本地或云存储',
-    icon: '💾',
-    author: 'ServerHub',
-    official: true,
-    rating: 4.3,
-    ratingCount: 98,
-    ratingDistribution: [55, 28, 10, 3, 2],
-    downloads: 4200,
-    installed: false,
-    enabled: false,
-    version: '1.0.0',
-    latestVersion: '1.0.0',
-    hasUpdate: false,
-    category: 'tools',
-    tags: ['备份', '定时任务', '云存储'],
-    features: ['定时备份', '增量备份', '云存储支持', '备份恢复', '通知提醒'],
-    updatedAt: '2024-01-03',
-    changelog: [
-      { version: '1.0.0', date: '2024-01-03', changes: ['首次发布'] }
-    ],
-    reviews: []
-  },
-  {
-    id: 'monitor',
-    name: '高级监控',
-    description: '详细的性能监控、告警通知、历史数据',
-    icon: '📊',
-    author: 'ServerHub',
-    official: true,
-    rating: 4.6,
-    ratingCount: 145,
-    ratingDistribution: [95, 32, 12, 4, 2],
-    downloads: 5600,
-    installed: false,
-    enabled: false,
-    version: '1.0.0',
-    latestVersion: '1.0.0',
-    hasUpdate: false,
-    category: 'monitor',
-    tags: ['监控', '告警', '性能'],
-    features: ['实时监控', '历史数据', '告警规则', '邮件通知', '自定义仪表盘'],
-    updatedAt: '2024-01-06',
-    changelog: [
-      { version: '1.0.0', date: '2024-01-06', changes: ['首次发布'] }
-    ],
-    reviews: []
-  },
-  {
-    id: 'firewall',
-    name: '防火墙管理',
-    description: '可视化管理 iptables/firewalld 规则',
-    icon: '🛡️',
-    author: 'ServerHub',
-    official: true,
-    rating: 4.2,
-    ratingCount: 87,
-    ratingDistribution: [45, 25, 12, 3, 2],
-    downloads: 3200,
-    installed: false,
-    enabled: false,
-    version: '1.0.0',
-    latestVersion: '1.0.0',
-    hasUpdate: false,
-    category: 'server',
-    tags: ['安全', '防火墙', '网络'],
-    features: ['规则管理', '端口控制', 'IP黑白名单', '日志分析'],
-    updatedAt: '2024-01-02',
-    changelog: [
-      { version: '1.0.0', date: '2024-01-02', changes: ['首次发布'] }
-    ],
-    reviews: []
-  }
-])
+  })
+})
 
-const officialCount = computed(() => plugins.value.filter(p => p.official).length)
+const officialCount = computed(() => pluginStore.marketPlugins.filter(p => p.official).length)
 
-const updatesAvailable = computed(() => plugins.value.filter(p => p.installed && p.hasUpdate))
+const updatesAvailable = computed(() =>
+  allPlugins.value.filter(p => p.installed && p.hasUpdate)
+)
 
 const filteredPlugins = computed(() => {
-  let result = plugins.value
+  let result = allPlugins.value
 
-  // 按分类筛选
   if (selectedCategory.value) {
     result = result.filter(p => p.category === selectedCategory.value)
   }
 
-  // 按搜索词筛选
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
     result = result.filter(p =>
@@ -714,35 +469,26 @@ const filteredPlugins = computed(() => {
     )
   }
 
-  // 排序
   result = [...result].sort((a, b) => {
     switch (sortBy.value) {
-      case 'downloads':
-        return b.downloads - a.downloads
-      case 'rating':
-        return b.rating - a.rating
-      case 'updated':
-        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      case 'name':
-        return a.name.localeCompare(b.name)
-      default:
-        return 0
+      case 'downloads': return b.downloads - a.downloads
+      case 'rating': return b.rating - a.rating
+      case 'updated': return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      case 'name': return a.name.localeCompare(b.name)
+      default: return 0
     }
   })
 
   return result
 })
 
-const installedPlugins = computed(() => plugins.value.filter(p => p.installed))
+const installedPlugins = computed(() => allPlugins.value.filter(p => p.installed))
 
 function formatNumber(num: number): string {
-  if (num >= 1000) {
-    return (num / 1000).toFixed(1) + 'k'
-  }
-  return num.toString()
+  return num >= 1000 ? (num / 1000).toFixed(1) + 'k' : num.toString()
 }
 
-function showPluginDetail(plugin: Plugin) {
+function showPluginDetail(plugin: MarketPlugin) {
   currentPlugin.value = plugin
   detailTab.value = 'description'
   userRating.value = 0
@@ -750,66 +496,70 @@ function showPluginDetail(plugin: Plugin) {
   showDetailDialog.value = true
 }
 
-function installPlugin(plugin: Plugin) {
-  // 检查依赖
-  if (plugin.dependencies && plugin.dependencies.length > 0) {
-    const missingDeps = plugin.dependencies.filter(dep => {
-      const depPlugin = plugins.value.find(p => p.id === dep)
-      return !depPlugin?.installed
-    })
-    if (missingDeps.length > 0) {
-      ElMessage.warning(`请先安装依赖插件: ${missingDeps.join(', ')}`)
-      return
-    }
-  }
-
-  plugin.installing = true
-  setTimeout(() => {
-    plugin.installed = true
-    plugin.enabled = true
-    plugin.installing = false
-    saveInstalledPlugins()
+async function installPlugin(plugin: MarketPlugin & { installing?: boolean }) {
+  installingPlugins.value.add(plugin.id)
+  try {
+    await pluginStore.installPlugin(plugin.id)
     ElMessage.success(`${plugin.name} 安装成功`)
-  }, 1000)
+  } catch (e) {
+    ElMessage.error(`安装失败: ${(e as Error).message}`)
+  } finally {
+    installingPlugins.value.delete(plugin.id)
+  }
 }
 
-function uninstallPlugin(plugin: Plugin) {
-  plugin.installed = false
-  plugin.enabled = false
-  plugin.hasUpdate = false
-  saveInstalledPlugins()
-  ElMessage.info(`${plugin.name} 已卸载`)
+async function uninstallPlugin(plugin: MarketPlugin & { installed?: boolean }) {
+  try {
+    await pluginStore.uninstallPlugin(plugin.id)
+    ElMessage.info(`${plugin.name} 已卸载`)
+  } catch (e) {
+    ElMessage.error(`卸载失败: ${(e as Error).message}`)
+  }
 }
 
-function updatePlugin(plugin: Plugin) {
-  plugin.updating = true
-  setTimeout(() => {
-    plugin.version = plugin.latestVersion
-    plugin.hasUpdate = false
-    plugin.updating = false
-    saveInstalledPlugins()
+async function updatePlugin(plugin: MarketPlugin) {
+  try {
+    await pluginStore.uninstallPlugin(plugin.id)
+    await pluginStore.installPlugin(plugin.id)
     ElMessage.success(`${plugin.name} 已更新到 v${plugin.version}`)
-  }, 1500)
+  } catch (e) {
+    ElMessage.error(`更新失败: ${(e as Error).message}`)
+  }
 }
 
-function togglePlugin(plugin: Plugin) {
-  saveInstalledPlugins()
-  ElMessage.success(`${plugin.name} 已${plugin.enabled ? '启用' : '禁用'}`)
+async function togglePlugin(plugin: MarketPlugin & { enabled?: boolean }) {
+  try {
+    if (plugin.enabled) {
+      await pluginStore.disablePlugin(plugin.id)
+      ElMessage.success(`${plugin.name} 已禁用`)
+    } else {
+      await pluginStore.enablePlugin(plugin.id)
+      ElMessage.success(`${plugin.name} 已启用`)
+    }
+  } catch (e) {
+    ElMessage.error(`操作失败: ${(e as Error).message}`)
+  }
 }
 
-function configurePlugin(plugin: Plugin) {
-  if (!plugin.config) {
+async function configurePlugin(plugin: MarketPlugin & { installed?: boolean }) {
+  const installedPlugin = pluginStore.getPlugin(plugin.id)
+  if (!installedPlugin) {
     ElMessage.info(`${plugin.name} 暂无可配置项`)
     return
   }
-  configPlugin.value = plugin
+  configPlugin.value = installedPlugin
   showConfigDialog.value = true
 }
 
-function savePluginConfig() {
+async function savePluginConfig() {
   if (configPlugin.value) {
-    ElMessage.success(`${configPlugin.value.name} 配置已保存`)
-    showConfigDialog.value = false
+    try {
+      await pluginStore.setPluginConfig(configPlugin.value.id, configPlugin.value.config || {})
+      ElMessage.success(`${configPlugin.value.name} 配置已保存`)
+      showConfigDialog.value = false
+    } catch (e) {
+      ElMessage.error(`保存失败: ${(e as Error).message}`)
+    }
   }
 }
 
@@ -826,29 +576,31 @@ function checkAllUpdates() {
   }, 1500)
 }
 
-function updateAllPlugins() {
+async function updateAllPlugins() {
   updatingAll.value = true
-  setTimeout(() => {
-    updatesAvailable.value.forEach(plugin => {
-      plugin.version = plugin.latestVersion
-      plugin.hasUpdate = false
-    })
-    updatingAll.value = false
-    saveInstalledPlugins()
+  try {
+    for (const plugin of updatesAvailable.value) {
+      await updatePlugin(plugin)
+    }
     ElMessage.success('所有插件已更新')
-  }, 2000)
+  } catch (e) {
+    ElMessage.error(`更新失败: ${(e as Error).message}`)
+  } finally {
+    updatingAll.value = false
+  }
 }
 
 function getRatingPercentage(stars: number): number {
   if (!currentPlugin.value || currentPlugin.value.ratingCount === 0) return 0
-  const index = 5 - stars
-  return Math.round((currentPlugin.value.ratingDistribution[index] / currentPlugin.value.ratingCount) * 100)
+  // 模拟评分分布
+  const distributions = [60, 25, 10, 3, 2]
+  return distributions[5 - stars] || 0
 }
 
 function getRatingCount(stars: number): number {
   if (!currentPlugin.value) return 0
-  const index = 5 - stars
-  return currentPlugin.value.ratingDistribution[index]
+  const total = currentPlugin.value.ratingCount
+  return Math.round(total * (getRatingPercentage(stars) / 100))
 }
 
 function setUserRating(rating: number) {
@@ -869,35 +621,10 @@ function submitReview() {
   userReview.value = ''
 }
 
-function saveInstalledPlugins() {
-  const installed = plugins.value
-    .filter(p => p.installed)
-    .map(p => ({ id: p.id, enabled: p.enabled, version: p.version }))
-  localStorage.setItem('serverhub_plugins', JSON.stringify(installed))
-}
-
-// 加载已安装插件状态
-function loadInstalledPlugins() {
-  const saved = localStorage.getItem('serverhub_plugins')
-  if (saved) {
-    try {
-      const installed = JSON.parse(saved) as { id: string; enabled: boolean; version?: string }[]
-      installed.forEach(item => {
-        const plugin = plugins.value.find(p => p.id === item.id)
-        if (plugin) {
-          plugin.installed = true
-          plugin.enabled = item.enabled
-          if (item.version) {
-            plugin.version = item.version
-            plugin.hasUpdate = plugin.version !== plugin.latestVersion
-          }
-        }
-      })
-    } catch { /* ignore */ }
-  }
-}
-
-loadInstalledPlugins()
+onMounted(async () => {
+  await pluginStore.initialize()
+  await pluginStore.loadMarketPlugins()
+})
 </script>
 
 <style lang="scss" scoped>

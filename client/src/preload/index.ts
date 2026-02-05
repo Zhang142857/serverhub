@@ -173,11 +173,38 @@ const electronAPI: ElectronAPI = {
   ai: {
     chat: (message: string, context?: AIContext): Promise<string> =>
       ipcRenderer.invoke('ai:chat', message, context),
+    executeAgent: (message: string, context?: AIContext): Promise<{
+      response: string
+      steps: Array<{ type: string; content: string; timestamp: Date; toolCall?: any; toolResult?: any }>
+      plan?: { goal: string; steps: Array<{ id: number; description: string; status: string }> }
+      toolCalls: Array<{ name: string; arguments: Record<string, unknown>; result: unknown; success: boolean }>
+    }> => ipcRenderer.invoke('ai:executeAgent', message, context),
+    getAvailableTools: (): Promise<Array<{
+      name: string
+      displayName: string
+      description: string
+      category: string
+      dangerous: boolean
+    }>> => ipcRenderer.invoke('ai:getAvailableTools'),
     setProvider: (provider: string, config: AIProviderConfig): Promise<boolean> =>
       ipcRenderer.invoke('ai:setProvider', provider, config),
+    getProviders: (): Promise<Array<{ id: string; name: string; description: string }>> =>
+      ipcRenderer.invoke('ai:getProviders'),
     onStream: (callback: (chunk: string) => void): (() => void) => {
       ipcRenderer.on('ai:stream', (_, chunk) => callback(chunk))
       return () => ipcRenderer.removeAllListeners('ai:stream')
+    },
+    onAgentStep: (callback: (step: any) => void): (() => void) => {
+      ipcRenderer.on('ai:agent:step', (_, step) => callback(step))
+      return () => ipcRenderer.removeAllListeners('ai:agent:step')
+    },
+    onAgentPlan: (callback: (plan: any) => void): (() => void) => {
+      ipcRenderer.on('ai:agent:plan', (_, plan) => callback(plan))
+      return () => ipcRenderer.removeAllListeners('ai:agent:plan')
+    },
+    onAgentConfirm: (callback: (data: any) => void): (() => void) => {
+      ipcRenderer.on('ai:agent:confirm', (_, data) => callback(data))
+      return () => ipcRenderer.removeAllListeners('ai:agent:confirm')
     }
   },
 
@@ -335,6 +362,94 @@ const electronAPI: ElectronAPI = {
       body: Buffer
       error?: string
     }> => ipcRenderer.invoke('docker:proxyRequest', serverId, options)
+  },
+
+  // 插件系统
+  plugin: {
+    list: (): Promise<Array<{
+      id: string
+      name: string
+      version: string
+      description: string
+      author: string
+      icon?: string
+      status: string
+      permissions: string[]
+      capabilities: {
+        menus?: Array<{ id: string; label: string; icon?: string; route?: string; order?: number }>
+        routes?: Array<{ path: string; name: string; component: string }>
+        tools?: Array<{ name: string; displayName: string; description: string; category: string; dangerous?: boolean }>
+      }
+    }>> => ipcRenderer.invoke('plugin:list'),
+
+    install: (pluginId: string, source?: string): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke('plugin:install', pluginId, source),
+
+    uninstall: (pluginId: string): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke('plugin:uninstall', pluginId),
+
+    enable: (pluginId: string): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke('plugin:enable', pluginId),
+
+    disable: (pluginId: string): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke('plugin:disable', pluginId),
+
+    getConfig: (pluginId: string): Promise<Record<string, unknown>> =>
+      ipcRenderer.invoke('plugin:getConfig', pluginId),
+
+    setConfig: (pluginId: string, config: Record<string, unknown>): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke('plugin:setConfig', pluginId, config),
+
+    getMenus: (): Promise<Array<{
+      id: string
+      pluginId: string
+      label: string
+      icon?: string
+      route?: string
+      position?: string
+      order?: number
+    }>> => ipcRenderer.invoke('plugin:getMenus'),
+
+    getRoutes: (): Promise<Array<{
+      path: string
+      name: string
+      component: string
+      pluginId: string
+      meta?: Record<string, unknown>
+    }>> => ipcRenderer.invoke('plugin:getRoutes'),
+
+    getMarketPlugins: (): Promise<Array<{
+      id: string
+      name: string
+      version: string
+      description: string
+      author: string
+      icon?: string
+      downloads: number
+      rating: number
+      ratingCount: number
+      tags: string[]
+      category: string
+      official: boolean
+      downloadUrl: string
+      updatedAt: string
+    }>> => ipcRenderer.invoke('plugin:getMarketPlugins'),
+
+    // 事件监听
+    onMenuRegister: (callback: (data: { pluginId: string; menu: { id: string; label: string; icon?: string; route?: string; order?: number } }) => void): (() => void) => {
+      ipcRenderer.on('plugin:menu:register', (_, data) => callback(data))
+      return () => ipcRenderer.removeAllListeners('plugin:menu:register')
+    },
+
+    onMenuUnregister: (callback: (data: { menuId: string }) => void): (() => void) => {
+      ipcRenderer.on('plugin:menu:unregister', (_, data) => callback(data))
+      return () => ipcRenderer.removeAllListeners('plugin:menu:unregister')
+    },
+
+    onNotification: (callback: (data: { pluginId: string; title: string; body: string; type?: string }) => void): (() => void) => {
+      ipcRenderer.on('plugin:notification', (_, data) => callback(data))
+      return () => ipcRenderer.removeAllListeners('plugin:notification')
+    }
   }
 }
 

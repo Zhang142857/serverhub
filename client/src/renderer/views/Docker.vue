@@ -1067,22 +1067,9 @@ async function searchForPull() {
   
   const query = pullSearchQuery.value.toLowerCase().trim()
   
-  // 优先使用本地镜像列表搜索（不需要网络）
-  const localResults = getLocalPopularImages().filter(
-    img => img.name.toLowerCase().includes(query) || 
-           img.short_description.toLowerCase().includes(query)
-  )
-  
-  if (localResults.length > 0) {
-    pullSearchResults.value = localResults
-    pullSearching.value = false
-    return
-  }
-  
-  // 本地没有匹配的，根据代理模式选择搜索方式
-  try {
-    // 服务端代理模式：通过 Agent 搜索 Docker Hub
-    if (dockerProxy.value.mode === 'server' && selectedServer.value) {
+  // 服务端代理模式：优先使用服务端搜索 Docker Hub
+  if (dockerProxy.value.mode === 'server' && selectedServer.value) {
+    try {
       const response = await window.electronAPI.docker.searchHub(
         selectedServer.value,
         pullSearchQuery.value,
@@ -1099,14 +1086,33 @@ async function searchForPull() {
           is_official: r.is_official,
           pull_count: r.pull_count
         }))
+        pullSearching.value = false
+        return
       } else if (response.error) {
         ElMessage.warning('服务端搜索失败: ' + response.error)
-      } else {
-        ElMessage.info('未找到匹配镜像，你可以直接从热门列表选择或手动输入镜像名')
       }
-    } 
+    } catch (e) {
+      console.error('Server search error:', e)
+      ElMessage.warning('服务端搜索出错，使用本地列表')
+    }
+  }
+  
+  // 本地镜像列表搜索（作为后备或非服务端代理模式）
+  const localResults = getLocalPopularImages().filter(
+    img => img.name.toLowerCase().includes(query) || 
+           img.short_description.toLowerCase().includes(query)
+  )
+  
+  if (localResults.length > 0) {
+    pullSearchResults.value = localResults
+    pullSearching.value = false
+    return
+  }
+  
+  // 本地没有匹配的，根据代理模式选择搜索方式
+  try {
     // HTTP 代理模式
-    else if (dockerProxy.value.mode === 'http') {
+    if (dockerProxy.value.mode === 'http') {
       let proxyConfig: { host: string; port: number; username?: string; password?: string } | undefined
       if (dockerProxy.value.httpProxy) {
         try {
