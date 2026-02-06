@@ -77,6 +77,13 @@
   box-sizing: border-box;
 }
 
+// SVG 内部元素不应受全局 box-sizing 重置影响
+svg *, svg *::before, svg *::after {
+  box-sizing: content-box;
+  margin: initial;
+  padding: initial;
+}
+
 html, body {
   height: 100%;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -273,6 +280,21 @@ html, body {
 // 空状态
 .el-empty__description {
   color: var(--text-secondary);
+}
+
+// 修复 el-empty SVG 插图散开问题
+// Element Plus 的空状态 SVG 依赖内部 transform 定位各部件
+// 全局 * 重置和外层动画 transform 会干扰这些定位
+.el-empty {
+  .el-empty__image {
+    svg {
+      overflow: visible !important;
+      
+      g, path, ellipse, circle, rect, polygon {
+        box-sizing: content-box;
+      }
+    }
+  }
 }
 
 // 下拉菜单
