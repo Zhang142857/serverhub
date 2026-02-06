@@ -9,6 +9,11 @@ import { ToolRegistry, toolRegistry, ToolExecutor, ToolContext } from './tools/r
 import { systemTools } from './tools/system'
 import { dockerTools } from './tools/docker'
 import { fileTools } from './tools/file'
+import { deploymentTools } from './tools/deployment'
+import { monitoringTools } from './tools/monitoring'
+import { networkTools } from './tools/network'
+import { backupTools } from './tools/backup'
+import { taskTools } from './tools/task'
 import { ReActEngine, createReActEngine, ReActStep, TaskPlan, AIProvider, AIResponse } from './react-engine'
 
 // AI 配置
@@ -137,6 +142,21 @@ export class AIGateway extends EventEmitter implements AIProvider {
 
     // 注册文件工具
     this.toolRegistry.registerAll(fileTools)
+
+    // 注册部署工具
+    this.toolRegistry.registerAll(deploymentTools)
+
+    // 注册监控诊断工具
+    this.toolRegistry.registerAll(monitoringTools)
+
+    // 注册网络工具
+    this.toolRegistry.registerAll(networkTools)
+
+    // 注册备份管理工具
+    this.toolRegistry.registerAll(backupTools)
+
+    // 注册计划任务工具
+    this.toolRegistry.registerAll(taskTools)
 
     console.log(`[AIGateway] Registered ${this.toolRegistry.size} tools`)
   }

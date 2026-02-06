@@ -1,6 +1,6 @@
 <template>
   <div class="dashboard">
-    <div class="dashboard-header">
+    <div class="dashboard-header animate-fade-in">
       <div class="header-left">
         <h1>仪表盘</h1>
         <p class="subtitle">服务器状态概览</p>
@@ -14,54 +14,62 @@
 
     <!-- 统计卡片 -->
     <div class="stats-grid">
-      <div class="stat-card" @click="$router.push('/servers')">
+      <div class="stat-card animate-slide-up" :style="{ animationDelay: '0.1s' }" @click="$router.push('/servers')">
         <div class="stat-icon servers"><el-icon :size="22"><Monitor /></el-icon></div>
         <div class="stat-info">
-          <div class="stat-value">{{ servers.length }}</div>
+          <div class="stat-value"><AnimatedNumber :value="servers.length" /></div>
           <div class="stat-label">服务器</div>
         </div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card animate-slide-up" :style="{ animationDelay: '0.15s' }">
         <div class="stat-icon connected"><el-icon :size="22"><Connection /></el-icon></div>
         <div class="stat-info">
-          <div class="stat-value">{{ connectedCount }}</div>
+          <div class="stat-value"><AnimatedNumber :value="connectedCount" /></div>
           <div class="stat-label">已连接</div>
         </div>
       </div>
-      <div class="stat-card" @click="$router.push('/docker')">
+      <div class="stat-card animate-slide-up" :style="{ animationDelay: '0.2s' }" @click="$router.push('/docker')">
         <div class="stat-icon containers"><el-icon :size="22"><Box /></el-icon></div>
         <div class="stat-info">
-          <div class="stat-value">{{ containerStats.total }}</div>
+          <div class="stat-value"><AnimatedNumber :value="containerStats.total" /></div>
           <div class="stat-label">容器</div>
         </div>
       </div>
-      <div class="stat-card" @click="$router.push('/services')">
+      <div class="stat-card animate-slide-up" :style="{ animationDelay: '0.25s' }" @click="$router.push('/services')">
         <div class="stat-icon services"><el-icon :size="22"><Setting /></el-icon></div>
         <div class="stat-info">
-          <div class="stat-value">{{ serviceStats.running }}/{{ serviceStats.total }}</div>
+          <div class="stat-value"><AnimatedNumber :value="serviceStats.running" />/<AnimatedNumber :value="serviceStats.total" /></div>
           <div class="stat-label">服务</div>
         </div>
       </div>
-      <div class="stat-card" @click="$router.push('/monitor')">
+      <div class="stat-card animate-slide-up" :style="{ animationDelay: '0.3s' }" @click="$router.push('/monitor')">
         <div class="stat-icon monitor"><el-icon :size="22"><DataLine /></el-icon></div>
         <div class="stat-info">
-          <div class="stat-value">{{ Math.round(avgCpu) }}%</div>
+          <div class="stat-value"><AnimatedNumber :value="Math.round(avgCpu)" />%</div>
           <div class="stat-label">CPU</div>
         </div>
       </div>
     </div>
 
     <!-- 系统健康 -->
-    <div class="health-row" v-if="connectedCount > 0">
+    <div class="health-row animate-fade-in" :style="{ animationDelay: '0.35s' }" v-if="connectedCount > 0">
       <div class="health-card">
         <div class="health-score" :class="healthStatus">
           <div class="score-ring">
             <svg viewBox="0 0 100 100">
               <circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" stroke-width="6" opacity="0.15" />
-              <circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" stroke-width="6"
-                :stroke-dasharray="`${healthScore * 2.64} 264`" stroke-linecap="round" transform="rotate(-90 50 50)" />
+              <circle 
+                class="score-progress" 
+                cx="50" cy="50" r="42" 
+                fill="none" 
+                stroke="currentColor" 
+                stroke-width="6"
+                :stroke-dasharray="`${animatedHealthScore * 2.64} 264`" 
+                stroke-linecap="round" 
+                transform="rotate(-90 50 50)" 
+              />
             </svg>
-            <span class="score-num">{{ healthScore }}</span>
+            <span class="score-num"><AnimatedNumber :value="healthScore" /></span>
           </div>
           <div class="health-text">
             <span class="health-label">系统健康</span>
@@ -87,84 +95,66 @@
         </div>
       </div>
       <div class="quick-links">
-        <div class="ql-item" @click="$router.push('/terminal')">
-          <el-icon :size="20"><Monitor /></el-icon>
-          <span>终端</span>
-        </div>
-        <div class="ql-item" @click="$router.push('/files')">
-          <el-icon :size="20"><Folder /></el-icon>
-          <span>文件</span>
-        </div>
-        <div class="ql-item" @click="$router.push('/docker')">
-          <el-icon :size="20"><Box /></el-icon>
-          <span>Docker</span>
-        </div>
-        <div class="ql-item" @click="$router.push('/database')">
-          <el-icon :size="20"><Coin /></el-icon>
-          <span>数据库</span>
-        </div>
-        <div class="ql-item" @click="$router.push('/websites')">
-          <el-icon :size="20"><Link /></el-icon>
-          <span>网站</span>
-        </div>
-        <div class="ql-item" @click="$router.push('/logs')">
-          <el-icon :size="20"><Document /></el-icon>
-          <span>日志</span>
-        </div>
-        <div class="ql-item" @click="$router.push('/alerts')">
-          <el-icon :size="20"><Bell /></el-icon>
-          <span>告警</span>
-        </div>
-        <div class="ql-item" @click="$router.push('/ai')">
-          <el-icon :size="20"><ChatDotRound /></el-icon>
-          <span>AI</span>
+        <div class="ql-item" v-for="(link, index) in quickLinks" :key="link.path" 
+             :style="{ animationDelay: `${0.4 + index * 0.05}s` }"
+             class="animate-scale-in"
+             @click="$router.push(link.path)">
+          <el-icon :size="20"><component :is="link.icon" /></el-icon>
+          <span>{{ link.label }}</span>
         </div>
       </div>
     </div>
 
     <!-- 服务器列表 -->
-    <div class="servers-section">
+    <div class="servers-section animate-fade-in" :style="{ animationDelay: '0.5s' }">
       <div class="section-header">
         <h2>服务器</h2>
         <el-button text size="small" @click="$router.push('/servers')">查看全部</el-button>
       </div>
       <div class="server-grid" v-if="servers.length > 0">
-        <div v-for="server in servers.slice(0, 6)" :key="server.id" class="server-card" :class="server.status" @click="goToServer(server)">
-          <div class="sc-header">
-            <span class="sc-dot" :class="server.status"></span>
-            <span class="sc-name">{{ server.name }}</span>
-            <el-dropdown trigger="click" @command="handleServerAction($event, server)">
-              <el-button text circle size="small" @click.stop><el-icon><MoreFilled /></el-icon></el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item v-if="server.status !== 'connected'" command="connect">连接</el-dropdown-item>
-                  <el-dropdown-item v-if="server.status === 'connected'" command="disconnect">断开</el-dropdown-item>
-                  <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </div>
-          <div class="sc-host">{{ server.host }}:{{ server.port }}</div>
-          <div class="sc-metrics" v-if="server.status === 'connected' && metrics[server.id]">
-            <div class="scm-item">
-              <span>CPU</span>
-              <el-progress :percentage="metrics[server.id].cpu" :stroke-width="4" :show-text="false" :color="getColor(metrics[server.id].cpu)" />
-              <span>{{ metrics[server.id].cpu.toFixed(0) }}%</span>
+        <TransitionGroup name="server-list">
+          <div v-for="(server, index) in servers.slice(0, 6)" :key="server.id" 
+               class="server-card" :class="server.status" 
+               :style="{ animationDelay: `${0.55 + index * 0.08}s` }"
+               @click="goToServer(server)">
+            <div class="sc-header">
+              <span class="sc-dot" :class="[server.status, { pulse: server.status === 'connected' }]"></span>
+              <span class="sc-name">{{ server.name }}</span>
+              <el-dropdown trigger="click" @command="handleServerAction($event, server)">
+                <el-button text circle size="small" @click.stop><el-icon><MoreFilled /></el-icon></el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item v-if="server.status !== 'connected'" command="connect">连接</el-dropdown-item>
+                    <el-dropdown-item v-if="server.status === 'connected'" command="disconnect">断开</el-dropdown-item>
+                    <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </div>
-            <div class="scm-item">
-              <span>内存</span>
-              <el-progress :percentage="metrics[server.id].memory" :stroke-width="4" :show-text="false" :color="getColor(metrics[server.id].memory)" />
-              <span>{{ metrics[server.id].memory.toFixed(0) }}%</span>
+            <div class="sc-host">{{ server.host }}:{{ server.port }}</div>
+            <div class="sc-metrics" v-if="server.status === 'connected' && metrics[server.id]">
+              <div class="scm-item">
+                <span>CPU</span>
+                <el-progress :percentage="metrics[server.id].cpu" :stroke-width="4" :show-text="false" :color="getColor(metrics[server.id].cpu)" />
+                <span>{{ metrics[server.id].cpu.toFixed(0) }}%</span>
+              </div>
+              <div class="scm-item">
+                <span>内存</span>
+                <el-progress :percentage="metrics[server.id].memory" :stroke-width="4" :show-text="false" :color="getColor(metrics[server.id].memory)" />
+                <span>{{ metrics[server.id].memory.toFixed(0) }}%</span>
+              </div>
+            </div>
+            <div class="sc-status">
+              <span v-if="server.status === 'connected'" class="st-ok">已连接</span>
+              <span v-else-if="server.status === 'connecting'" class="st-ing">
+                <el-icon class="is-loading"><Loading /></el-icon> 连接中
+              </span>
+              <span v-else class="st-off">未连接</span>
             </div>
           </div>
-          <div class="sc-status">
-            <span v-if="server.status === 'connected'" class="st-ok">已连接</span>
-            <span v-else-if="server.status === 'connecting'" class="st-ing">连接中</span>
-            <span v-else class="st-off">未连接</span>
-          </div>
-        </div>
+        </TransitionGroup>
       </div>
-      <el-empty v-else description="暂无服务器">
+      <el-empty v-else description="暂无服务器" class="animate-fade-in">
         <el-button type="primary" size="small" @click="showAddServer = true">添加服务器</el-button>
       </el-empty>
     </div>
@@ -197,11 +187,52 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, h, defineComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { useServerStore } from '@/stores/server'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Monitor, Connection, Box, Setting, Plus, MoreFilled, Folder, ChatDotRound, DataLine, Link, Coin, Document, Bell } from '@element-plus/icons-vue'
+import { Monitor, Connection, Box, Setting, Plus, MoreFilled, Folder, ChatDotRound, DataLine, Link, Coin, Document, Bell, Loading } from '@element-plus/icons-vue'
+
+// 数字动画组件
+const AnimatedNumber = defineComponent({
+  props: {
+    value: { type: Number, default: 0 },
+    duration: { type: Number, default: 500 }
+  },
+  setup(props) {
+    const displayValue = ref(0)
+    let animationFrame: number | null = null
+    
+    const animate = (from: number, to: number) => {
+      const startTime = performance.now()
+      const diff = to - from
+      
+      const step = (currentTime: number) => {
+        const elapsed = currentTime - startTime
+        const progress = Math.min(elapsed / props.duration, 1)
+        const easeProgress = 1 - Math.pow(1 - progress, 3) // easeOutCubic
+        displayValue.value = Math.round(from + diff * easeProgress)
+        
+        if (progress < 1) {
+          animationFrame = requestAnimationFrame(step)
+        }
+      }
+      
+      if (animationFrame) cancelAnimationFrame(animationFrame)
+      animationFrame = requestAnimationFrame(step)
+    }
+    
+    watch(() => props.value, (newVal, oldVal) => {
+      animate(oldVal || 0, newVal)
+    }, { immediate: true })
+    
+    onUnmounted(() => {
+      if (animationFrame) cancelAnimationFrame(animationFrame)
+    })
+    
+    return () => h('span', displayValue.value)
+  }
+})
 
 const router = useRouter()
 const serverStore = useServerStore()
@@ -214,6 +245,19 @@ const metrics = ref<Record<string, { cpu: number; memory: number; disk: number }
 const containerStats = ref({ total: 0, running: 0 })
 const serviceStats = ref({ total: 0, running: 0 })
 const cleanupFns = ref<Record<string, () => void>>({})
+const animatedHealthScore = ref(0)
+
+// 快速链接配置
+const quickLinks = [
+  { path: '/terminal', icon: Monitor, label: '终端' },
+  { path: '/files', icon: Folder, label: '文件' },
+  { path: '/docker', icon: Box, label: 'Docker' },
+  { path: '/database', icon: Coin, label: '数据库' },
+  { path: '/websites', icon: Link, label: '网站' },
+  { path: '/logs', icon: Document, label: '日志' },
+  { path: '/alerts', icon: Bell, label: '告警' },
+  { path: '/ai', icon: ChatDotRound, label: 'AI' },
+]
 
 const servers = computed(() => serverStore.servers)
 const connectedCount = computed(() => serverStore.connectedServers.length)
@@ -252,6 +296,27 @@ const healthStatusText = computed(() => {
   if (healthStatus.value === 'warning') return '警告'
   return '异常'
 })
+
+// 健康评分动画
+watch(healthScore, (newVal) => {
+  const startVal = animatedHealthScore.value
+  const diff = newVal - startVal
+  const duration = 800
+  const startTime = performance.now()
+  
+  const animate = (currentTime: number) => {
+    const elapsed = currentTime - startTime
+    const progress = Math.min(elapsed / duration, 1)
+    const easeProgress = 1 - Math.pow(1 - progress, 3)
+    animatedHealthScore.value = startVal + diff * easeProgress
+    
+    if (progress < 1) {
+      requestAnimationFrame(animate)
+    }
+  }
+  
+  requestAnimationFrame(animate)
+}, { immediate: true })
 
 function getColor(v: number): string {
   if (v < 60) return '#22c55e'
@@ -390,6 +455,79 @@ async function addServer() {
 </script>
 
 <style lang="scss" scoped>
+// 动画关键帧
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0; 
+    transform: translateY(20px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
+@keyframes scaleIn {
+  from { 
+    opacity: 0; 
+    transform: scale(0.9); 
+  }
+  to { 
+    opacity: 1; 
+    transform: scale(1); 
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { 
+    opacity: 1;
+    box-shadow: 0 0 0 0 currentColor;
+  }
+  50% { 
+    opacity: 0.8;
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 5px currentColor; }
+  50% { box-shadow: 0 0 15px currentColor; }
+}
+
+// 动画类
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out both;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.5s ease-out both;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.4s ease-out both;
+}
+
+// 列表过渡
+.server-list-enter-active,
+.server-list-leave-active {
+  transition: all 0.4s ease;
+}
+
+.server-list-enter-from {
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
+.server-list-leave-to {
+  opacity: 0;
+  transform: translateX(20px);
+}
+
 .dashboard {
   max-width: 1200px;
   margin: 0 auto;
@@ -429,12 +567,16 @@ async function addServer() {
   align-items: center;
   gap: var(--space-3);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   
   &:hover {
     border-color: var(--primary-color);
-    box-shadow: var(--shadow-md);
-    transform: translateY(-2px);
+    box-shadow: 0 8px 25px -5px rgba(99, 102, 241, 0.25);
+    transform: translateY(-4px);
+    
+    .stat-icon {
+      transform: scale(1.1);
+    }
   }
 
   .stat-icon {
@@ -444,6 +586,7 @@ async function addServer() {
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: transform 0.3s ease;
     
     &.servers {
       background: var(--primary-light);
@@ -512,6 +655,10 @@ async function addServer() {
         height: 100%;
       }
       
+      .score-progress {
+        transition: stroke-dasharray 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      
       .score-num {
         position: absolute;
         inset: 0;
@@ -533,6 +680,10 @@ async function addServer() {
       font-weight: 500;
       display: block;
       margin-top: 2px;
+      
+      &.healthy { color: var(--success-color); }
+      &.warning { color: var(--warning-color); }
+      &.critical { color: var(--danger-color); }
     }
   }
 
@@ -584,16 +735,26 @@ async function addServer() {
     padding: var(--space-3) var(--space-2);
     border-radius: var(--radius-md);
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     
     &:hover {
       background: var(--bg-tertiary);
       color: var(--primary-color);
+      transform: translateY(-2px);
+      
+      .el-icon {
+        transform: scale(1.15);
+      }
+    }
+    
+    .el-icon {
+      transition: transform 0.3s ease;
     }
     
     span {
       font-size: var(--text-xs);
       color: var(--text-secondary);
+      transition: color 0.3s ease;
     }
     
     &:hover span {
@@ -628,11 +789,13 @@ async function addServer() {
   border-radius: var(--radius-lg);
   padding: var(--space-4);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: slideUp 0.5s ease-out both;
   
   &:hover {
     border-color: var(--primary-color);
-    box-shadow: var(--shadow-md);
+    box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.2);
+    transform: translateY(-3px);
   }
   
   &.connected {
@@ -653,13 +816,19 @@ async function addServer() {
       width: 8px;
       height: 8px;
       border-radius: 50%;
+      transition: all 0.3s ease;
       
       &.connected {
         background: var(--success-color);
         box-shadow: 0 0 6px var(--success-color);
+        
+        &.pulse {
+          animation: glow 2s ease-in-out infinite;
+        }
       }
       &.connecting {
         background: var(--warning-color);
+        animation: pulse 1.5s ease-in-out infinite;
       }
       &.disconnected, &.error {
         background: var(--text-muted);
@@ -713,11 +882,23 @@ async function addServer() {
     }
     .st-ing {
       color: var(--warning-color);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      
+      .is-loading {
+        animation: spin 1s linear infinite;
+      }
     }
     .st-off {
       color: var(--text-secondary);
     }
   }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 :deep(.dark-dialog) {

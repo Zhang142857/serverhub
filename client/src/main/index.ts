@@ -2,6 +2,9 @@ import { app, BrowserWindow, shell, session } from 'electron'
 import { join } from 'path'
 import { setupIpcHandlers } from './ipc/handlers'
 import { setupPluginIPC } from './plugins/api-bridge'
+import { setupBackupHandlers } from './ipc/backup-handlers'
+import { setupTaskHandlers, initTaskScheduler } from './ipc/task-handlers'
+import { setupAppStoreHandlers, initAppStore } from './ipc/app-store-handlers'
 
 // 禁用硬件加速（可选，某些系统上可能需要）
 // app.disableHardwareAcceleration()
@@ -70,10 +73,21 @@ function createWindow() {
 }
 
 // 应用准备就绪
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   createWindow()
-  setupIpcHandlers()
+  
+  // 设置IPC处理器
+  const serverConnections = setupIpcHandlers()
   setupPluginIPC()
+  
+  // 设置新功能的IPC处理器
+  setupBackupHandlers(serverConnections)
+  setupTaskHandlers()
+  setupAppStoreHandlers(serverConnections)
+  
+  // 初始化任务调度器和应用商店
+  await initTaskScheduler()
+  await initAppStore(serverConnections)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

@@ -1,0 +1,25 @@
+{
+  "name": "@serverhub/plugin-sdk",
+  "version": "1.0.0",
+  "description": "SDK for building ServerHub plugins",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "serverhub",
+    "plugin",
+    "sdk"
+  ],
+  "author": "ServerHub",
+  "license": "MIT",
+  "dependencies": {
+    "@serverhub/plugin-types": "^1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  }
+}

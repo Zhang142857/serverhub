@@ -5,9 +5,9 @@
       <div class="main-content">
         <Header />
         <div class="page-content">
-          <router-view v-slot="{ Component }">
-            <transition name="fade" mode="out-in">
-              <component :is="Component" />
+          <router-view v-slot="{ Component, route }">
+            <transition name="page-slide" mode="out-in">
+              <component :is="Component" :key="route.path" />
             </transition>
           </router-view>
         </div>
@@ -59,9 +59,29 @@ onMounted(() => {
   padding: var(--space-5);
 }
 
+// 页面切换动画 - 淡入淡出 + 轻微上移
+.page-slide-enter-active {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.page-slide-leave-active {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.page-slide-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+.page-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+// 备用的简单淡入淡出动画
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity var(--transition-normal);
+  transition: opacity 0.25s ease;
 }
 
 .fade-enter-from,

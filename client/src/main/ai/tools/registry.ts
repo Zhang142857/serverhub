@@ -20,7 +20,7 @@ export interface ToolDefinition {
   name: string
   displayName: string
   description: string
-  category: 'system' | 'docker' | 'file' | 'network' | 'database' | 'plugin'
+  category: 'system' | 'docker' | 'file' | 'network' | 'database' | 'plugin' | 'deployment' | 'monitoring'
   dangerous?: boolean  // 危险操作标记，执行前需用户确认
   parameters: {
     type: 'object'
@@ -177,7 +177,7 @@ export class ToolRegistry extends EventEmitter {
   constructor() {
     super()
     // 初始化分类
-    const defaultCategories = ['system', 'docker', 'file', 'network', 'database', 'plugin']
+    const defaultCategories = ['system', 'docker', 'file', 'network', 'database', 'plugin', 'deployment', 'monitoring']
     defaultCategories.forEach(cat => this.categories.set(cat, new Set()))
   }
 

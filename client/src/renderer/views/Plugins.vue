@@ -1,6 +1,6 @@
 <template>
   <div class="plugins-page">
-    <div class="page-header">
+    <div class="page-header animate-fade-in">
       <div class="header-left">
         <h1>插件市场</h1>
         <p class="subtitle">扩展 ServerHub 的功能</p>
@@ -36,7 +36,7 @@
       type="warning"
       show-icon
       :closable="false"
-      class="update-alert"
+      class="update-alert animate-slide-up"
     >
       <template #default>
         <div class="update-list">
@@ -52,26 +52,26 @@
 
     <!-- 统计卡片 -->
     <div class="stats-row">
-      <div class="stat-card">
+      <div class="stat-card animate-slide-up" :style="{ animationDelay: '0.1s' }">
         <span class="stat-value">{{ installedPlugins.length }}</span>
         <span class="stat-label">已安装</span>
       </div>
-      <div class="stat-card">
+      <div class="stat-card animate-slide-up" :style="{ animationDelay: '0.15s' }">
         <span class="stat-value">{{ plugins.length }}</span>
         <span class="stat-label">可用插件</span>
       </div>
-      <div class="stat-card">
+      <div class="stat-card animate-slide-up" :style="{ animationDelay: '0.2s' }">
         <span class="stat-value">{{ officialCount }}</span>
         <span class="stat-label">官方插件</span>
       </div>
-      <div class="stat-card">
+      <div class="stat-card animate-slide-up" :style="{ animationDelay: '0.25s' }">
         <span class="stat-value">{{ updatesAvailable.length }}</span>
         <span class="stat-label">待更新</span>
       </div>
     </div>
 
     <!-- 分类筛选 -->
-    <div class="category-filter">
+    <div class="category-filter animate-fade-in" :style="{ animationDelay: '0.3s' }">
       <el-radio-group v-model="selectedCategory" size="small">
         <el-radio-button label="">全部</el-radio-button>
         <el-radio-button
@@ -84,13 +84,14 @@
       </el-radio-group>
     </div>
 
-    <el-tabs v-model="activeTab">
+    <el-tabs v-model="activeTab" class="animate-fade-in" :style="{ animationDelay: '0.35s' }">
       <el-tab-pane label="全部插件" name="all">
         <div class="plugin-grid">
           <el-card
-            v-for="plugin in filteredPlugins"
+            v-for="(plugin, index) in filteredPlugins"
             :key="plugin.id"
-            class="plugin-card"
+            class="plugin-card animate-scale-in"
+            :style="{ animationDelay: `${0.4 + index * 0.03}s` }"
             @click="showPluginDetail(plugin)"
           >
             <div class="plugin-header">
@@ -159,9 +160,10 @@
       <el-tab-pane label="已安装" name="installed">
         <div class="plugin-grid">
           <el-card
-            v-for="plugin in installedPlugins"
+            v-for="(plugin, index) in installedPlugins"
             :key="plugin.id"
-            class="plugin-card installed"
+            class="plugin-card installed animate-scale-in"
+            :style="{ animationDelay: `${0.1 + index * 0.05}s` }"
             @click="showPluginDetail(plugin)"
           >
             <div class="plugin-header">
@@ -800,6 +802,47 @@ onMounted(async () => {
 </script>
 
 <style lang="scss" scoped>
+// 动画关键帧
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0; 
+    transform: translateY(20px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
+@keyframes scaleIn {
+  from { 
+    opacity: 0; 
+    transform: scale(0.9); 
+  }
+  to { 
+    opacity: 1; 
+    transform: scale(1); 
+  }
+}
+
+// 动画类
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out both;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.5s ease-out both;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.4s ease-out both;
+}
+
 .plugins-page {
   max-width: 1200px;
   margin: 0 auto;
@@ -809,24 +852,24 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 24px;
+  margin-bottom: var(--space-6);
 
   .header-left {
     h1 {
-      font-size: 24px;
+      font-size: var(--text-xl);
       font-weight: 600;
       margin-bottom: 4px;
     }
 
     .subtitle {
       color: var(--text-secondary);
-      font-size: 14px;
+      font-size: var(--text-sm);
     }
   }
 
   .header-right {
     display: flex;
-    gap: 12px;
+    gap: var(--space-3);
     align-items: center;
   }
 
@@ -836,84 +879,101 @@ onMounted(async () => {
 }
 
 .update-alert {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 
   .update-list {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-3);
     flex-wrap: wrap;
-    margin-top: 8px;
+    margin-top: var(--space-2);
 
     .update-item {
-      font-size: 13px;
+      font-size: var(--text-sm);
     }
   }
 }
 
 .stats-row {
   display: flex;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
 
   .stat-card {
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 16px 24px;
+    padding: var(--space-4) var(--space-6);
     background: var(--bg-secondary);
-    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
     min-width: 100px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    &:hover {
+      border-color: var(--primary-color);
+      transform: translateY(-3px);
+      box-shadow: 0 8px 25px -5px rgba(99, 102, 241, 0.2);
+    }
 
     .stat-value {
-      font-size: 24px;
+      font-size: var(--text-2xl);
       font-weight: 600;
     }
 
     .stat-label {
-      font-size: 12px;
+      font-size: var(--text-xs);
       color: var(--text-secondary);
     }
   }
 }
 
 .category-filter {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .plugin-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
-  margin-top: 16px;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
 }
 
 .plugin-card {
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid var(--border-color);
 
   &:hover {
-    border-color: var(--el-color-primary);
+    border-color: var(--primary-color);
+    box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.2);
+    transform: translateY(-4px);
+
+    .plugin-icon {
+      transform: scale(1.1);
+    }
   }
 
   &.installed {
-    border-color: var(--el-color-success-light-5);
+    border-left: 3px solid var(--success-color);
   }
 
   .plugin-header {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 12px;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
 
     .plugin-icon {
       width: 40px;
       height: 40px;
-      border-radius: 10px;
+      border-radius: var(--radius-lg);
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
+      transition: transform 0.3s ease;
 
       :deep(svg) {
         width: 24px;
@@ -935,23 +995,23 @@ onMounted(async () => {
       flex: 1;
 
       h3 {
-        font-size: 16px;
+        font-size: var(--text-base);
         font-weight: 600;
         margin-bottom: 2px;
       }
 
       .plugin-author,
       .plugin-version {
-        font-size: 12px;
+        font-size: var(--text-xs);
         color: var(--text-secondary);
       }
     }
   }
 
   .plugin-desc {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
-    margin-bottom: 12px;
+    margin-bottom: var(--space-3);
     line-height: 1.5;
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -962,8 +1022,8 @@ onMounted(async () => {
   .plugin-rating {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 12px;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
 
     .stars {
       display: flex;
@@ -971,8 +1031,9 @@ onMounted(async () => {
     }
 
     .star {
-      color: #ddd;
-      font-size: 14px;
+      color: var(--border-color);
+      font-size: var(--text-sm);
+      transition: color 0.2s ease;
 
       &.filled {
         color: #f5a623;
@@ -981,11 +1042,11 @@ onMounted(async () => {
 
     .rating-value {
       font-weight: 600;
-      font-size: 14px;
+      font-size: var(--text-sm);
     }
 
     .rating-count {
-      font-size: 12px;
+      font-size: var(--text-xs);
       color: var(--text-secondary);
     }
   }
@@ -993,8 +1054,8 @@ onMounted(async () => {
   .plugin-tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 12px;
+    gap: var(--space-1);
+    margin-bottom: var(--space-3);
   }
 
   .plugin-footer {
@@ -1004,8 +1065,8 @@ onMounted(async () => {
 
     .plugin-stats {
       display: flex;
-      gap: 12px;
-      font-size: 12px;
+      gap: var(--space-3);
+      font-size: var(--text-xs);
       color: var(--text-secondary);
     }
   }
@@ -1014,8 +1075,8 @@ onMounted(async () => {
 .plugin-detail {
   .detail-header {
     display: flex;
-    gap: 16px;
-    margin-bottom: 24px;
+    gap: var(--space-4);
+    margin-bottom: var(--space-6);
 
     .plugin-icon.large {
       font-size: 64px;
@@ -1023,42 +1084,42 @@ onMounted(async () => {
 
     .detail-info {
       h2 {
-        font-size: 20px;
+        font-size: var(--text-xl);
         font-weight: 600;
         margin-bottom: 4px;
       }
 
       .author {
         color: var(--text-secondary);
-        margin-bottom: 8px;
+        margin-bottom: var(--space-2);
       }
 
       .detail-tags {
         display: flex;
-        gap: 8px;
+        gap: var(--space-2);
       }
     }
   }
 
   .detail-stats {
     display: flex;
-    gap: 32px;
-    padding: 16px;
-    background: var(--bg-color-overlay);
-    border-radius: 8px;
-    margin-bottom: 24px;
+    gap: var(--space-8);
+    padding: var(--space-4);
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-6);
 
     .stat {
       text-align: center;
 
       .value {
         display: block;
-        font-size: 20px;
+        font-size: var(--text-xl);
         font-weight: 600;
       }
 
       .label {
-        font-size: 12px;
+        font-size: var(--text-xs);
         color: var(--text-secondary);
       }
 
@@ -1069,7 +1130,7 @@ onMounted(async () => {
         gap: 4px;
 
         .rating-big {
-          font-size: 24px;
+          font-size: var(--text-2xl);
           font-weight: 600;
         }
 
@@ -1078,8 +1139,8 @@ onMounted(async () => {
           gap: 2px;
 
           .star {
-            color: #ddd;
-            font-size: 14px;
+            color: var(--border-color);
+            font-size: var(--text-sm);
 
             &.filled {
               color: #f5a623;
@@ -1091,12 +1152,12 @@ onMounted(async () => {
   }
 
   .detail-section {
-    margin-bottom: 16px;
+    margin-bottom: var(--space-4);
 
     h3 {
-      font-size: 14px;
+      font-size: var(--text-sm);
       font-weight: 600;
-      margin-bottom: 8px;
+      margin-bottom: var(--space-2);
     }
 
     p {
@@ -1106,7 +1167,7 @@ onMounted(async () => {
 
     ul {
       margin: 0;
-      padding-left: 20px;
+      padding-left: var(--space-5);
       color: var(--text-secondary);
 
       li {
@@ -1116,7 +1177,7 @@ onMounted(async () => {
 
     .dependency-list {
       display: flex;
-      gap: 8px;
+      gap: var(--space-2);
       flex-wrap: wrap;
     }
   }
@@ -1124,8 +1185,8 @@ onMounted(async () => {
 
 .changelog {
   .changelog-item {
-    margin-bottom: 20px;
-    padding-bottom: 16px;
+    margin-bottom: var(--space-5);
+    padding-bottom: var(--space-4);
     border-bottom: 1px solid var(--border-color);
 
     &:last-child {
@@ -1135,25 +1196,25 @@ onMounted(async () => {
     .changelog-header {
       display: flex;
       align-items: center;
-      gap: 12px;
-      margin-bottom: 8px;
+      gap: var(--space-3);
+      margin-bottom: var(--space-2);
 
       .version {
         font-weight: 600;
-        color: var(--el-color-primary);
+        color: var(--primary-color);
       }
 
       .date {
-        font-size: 12px;
+        font-size: var(--text-xs);
         color: var(--text-secondary);
       }
     }
 
     ul {
       margin: 0;
-      padding-left: 20px;
+      padding-left: var(--space-5);
       color: var(--text-secondary);
-      font-size: 13px;
+      font-size: var(--text-sm);
 
       li {
         margin-bottom: 4px;
@@ -1165,11 +1226,11 @@ onMounted(async () => {
 .reviews-section {
   .rating-summary {
     display: flex;
-    gap: 32px;
-    padding: 16px;
-    background: var(--bg-color-overlay);
-    border-radius: 8px;
-    margin-bottom: 24px;
+    gap: var(--space-8);
+    padding: var(--space-4);
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-6);
 
     .rating-big-display {
       display: flex;
@@ -1186,11 +1247,11 @@ onMounted(async () => {
       .stars.large {
         display: flex;
         gap: 4px;
-        margin: 8px 0;
+        margin: var(--space-2) 0;
 
         .star {
-          font-size: 20px;
-          color: #ddd;
+          font-size: var(--text-xl);
+          color: var(--border-color);
 
           &.filled {
             color: #f5a623;
@@ -1199,7 +1260,7 @@ onMounted(async () => {
       }
 
       .rating-count {
-        font-size: 12px;
+        font-size: var(--text-xs);
         color: var(--text-secondary);
       }
     }
@@ -1210,12 +1271,12 @@ onMounted(async () => {
       .rating-bar {
         display: flex;
         align-items: center;
-        gap: 8px;
-        margin-bottom: 6px;
+        gap: var(--space-2);
+        margin-bottom: var(--space-1);
 
         .bar-label {
           width: 40px;
-          font-size: 12px;
+          font-size: var(--text-xs);
           color: var(--text-secondary);
         }
 
@@ -1225,7 +1286,7 @@ onMounted(async () => {
 
         .bar-count {
           width: 30px;
-          font-size: 12px;
+          font-size: var(--text-xs);
           color: var(--text-secondary);
           text-align: right;
         }
@@ -1234,26 +1295,27 @@ onMounted(async () => {
   }
 
   .user-rating {
-    padding: 16px;
+    padding: var(--space-4);
     background: var(--bg-secondary);
-    border-radius: 8px;
-    margin-bottom: 24px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-6);
 
     h4 {
-      margin-bottom: 12px;
-      font-size: 14px;
+      margin-bottom: var(--space-3);
+      font-size: var(--text-sm);
       font-weight: 600;
     }
 
     .rate-stars {
       display: flex;
-      gap: 8px;
+      gap: var(--space-2);
 
       .star {
         font-size: 28px;
-        color: #ddd;
+        color: var(--border-color);
         cursor: pointer;
-        transition: color 0.2s;
+        transition: all 0.2s ease;
 
         &.filled {
           color: #f5a623;
@@ -1261,6 +1323,7 @@ onMounted(async () => {
 
         &:hover {
           color: #f5a623;
+          transform: scale(1.1);
         }
       }
     }
@@ -1268,7 +1331,7 @@ onMounted(async () => {
 
   .reviews-list {
     .review-item {
-      padding: 16px 0;
+      padding: var(--space-4) 0;
       border-bottom: 1px solid var(--border-color);
 
       &:last-child {
@@ -1278,8 +1341,8 @@ onMounted(async () => {
       .review-header {
         display: flex;
         align-items: center;
-        gap: 12px;
-        margin-bottom: 8px;
+        gap: var(--space-3);
+        margin-bottom: var(--space-2);
 
         .reviewer {
           font-weight: 600;
@@ -1290,8 +1353,8 @@ onMounted(async () => {
           gap: 2px;
 
           .star.small {
-            font-size: 12px;
-            color: #ddd;
+            font-size: var(--text-xs);
+            color: var(--border-color);
 
             &.filled {
               color: #f5a623;
@@ -1300,14 +1363,14 @@ onMounted(async () => {
         }
 
         .review-date {
-          font-size: 12px;
+          font-size: var(--text-xs);
           color: var(--text-secondary);
           margin-left: auto;
         }
       }
 
       .review-content {
-        font-size: 13px;
+        font-size: var(--text-sm);
         color: var(--text-secondary);
         line-height: 1.6;
         margin: 0;
@@ -1319,7 +1382,7 @@ onMounted(async () => {
 .plugin-config {
   .config-hint {
     display: block;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--text-secondary);
     margin-top: 4px;
   }

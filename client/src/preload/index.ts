@@ -450,6 +450,66 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.on('plugin:notification', (_, data) => callback(data))
       return () => ipcRenderer.removeAllListeners('plugin:notification')
     }
+  },
+
+  // 备份管理
+  backup: {
+    getStrategies: (): Promise<any[]> =>
+      ipcRenderer.invoke('backup:getStrategies'),
+    createStrategy: (strategy: any): Promise<any> =>
+      ipcRenderer.invoke('backup:createStrategy', strategy),
+    updateStrategy: (id: string, updates: any): Promise<any> =>
+      ipcRenderer.invoke('backup:updateStrategy', id, updates),
+    deleteStrategy: (id: string): Promise<any> =>
+      ipcRenderer.invoke('backup:deleteStrategy', id),
+    executeBackup: (strategyId: string): Promise<any> =>
+      ipcRenderer.invoke('backup:execute', strategyId),
+    getRecords: (strategyId?: string): Promise<any[]> =>
+      ipcRenderer.invoke('backup:getRecords', strategyId),
+    restoreBackup: (recordId: string, options?: any): Promise<any> =>
+      ipcRenderer.invoke('backup:restore', recordId, options),
+    deleteRecord: (recordId: string): Promise<any> =>
+      ipcRenderer.invoke('backup:deleteRecord', recordId)
+  },
+
+  // 计划任务
+  task: {
+    getTasks: (): Promise<any[]> =>
+      ipcRenderer.invoke('task:getTasks'),
+    createTask: (task: any): Promise<any> =>
+      ipcRenderer.invoke('task:create', task),
+    updateTask: (id: string, updates: any): Promise<any> =>
+      ipcRenderer.invoke('task:update', id, updates),
+    deleteTask: (id: string): Promise<any> =>
+      ipcRenderer.invoke('task:delete', id),
+    enableTask: (id: string): Promise<any> =>
+      ipcRenderer.invoke('task:enable', id),
+    disableTask: (id: string): Promise<any> =>
+      ipcRenderer.invoke('task:disable', id),
+    executeTask: (id: string): Promise<any> =>
+      ipcRenderer.invoke('task:execute', id),
+    getHistory: (taskId?: string): Promise<any[]> =>
+      ipcRenderer.invoke('task:getHistory', taskId),
+    getStats: (): Promise<any> =>
+      ipcRenderer.invoke('task:getStats')
+  },
+
+  // 应用商店
+  appStore: {
+    getTemplates: (): Promise<any[]> =>
+      ipcRenderer.invoke('appStore:getTemplates'),
+    deploy: (options: any): Promise<any> =>
+      ipcRenderer.invoke('appStore:deploy', options),
+    getInstalled: (): Promise<any[]> =>
+      ipcRenderer.invoke('appStore:getInstalled'),
+    startApp: (instanceId: string): Promise<any> =>
+      ipcRenderer.invoke('appStore:start', instanceId),
+    stopApp: (instanceId: string): Promise<any> =>
+      ipcRenderer.invoke('appStore:stop', instanceId),
+    uninstallApp: (instanceId: string): Promise<any> =>
+      ipcRenderer.invoke('appStore:uninstall', instanceId),
+    getStats: (): Promise<any> =>
+      ipcRenderer.invoke('appStore:getStats')
   }
 }
 

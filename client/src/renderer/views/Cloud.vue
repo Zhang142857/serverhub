@@ -1,27 +1,27 @@
 <template>
   <div class="cloud-page">
-    <div class="page-header">
+    <div class="page-header animate-fade-in">
       <h1>云服务集成</h1>
       <p class="subtitle">通过插件扩展云服务管理能力</p>
     </div>
 
     <!-- 统计卡片 -->
     <div class="stats-row">
-      <div class="stat-card">
+      <div class="stat-card animate-slide-up" :style="{ animationDelay: '0.1s' }">
         <div class="stat-icon installed"><el-icon><CircleCheck /></el-icon></div>
         <div class="stat-info">
           <span class="stat-value">{{ installedCloudPlugins.length }}</span>
           <span class="stat-label">已安装</span>
         </div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card animate-slide-up" :style="{ animationDelay: '0.15s' }">
         <div class="stat-icon connected"><el-icon><Link /></el-icon></div>
         <div class="stat-info">
           <span class="stat-value">{{ connectedCount }}</span>
           <span class="stat-label">已连接</span>
         </div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card animate-slide-up" :style="{ animationDelay: '0.2s' }">
         <div class="stat-icon available"><el-icon><Cloudy /></el-icon></div>
         <div class="stat-info">
           <span class="stat-value">{{ cloudProviders.length }}</span>
@@ -31,13 +31,14 @@
     </div>
 
     <!-- 已安装的云服务插件 -->
-    <div v-if="installedCloudPlugins.length > 0" class="section">
+    <div v-if="installedCloudPlugins.length > 0" class="section animate-fade-in" :style="{ animationDelay: '0.25s' }">
       <h2>已安装的云服务</h2>
       <div class="installed-plugins">
         <el-card
-          v-for="plugin in installedCloudPlugins"
+          v-for="(plugin, index) in installedCloudPlugins"
           :key="plugin.id"
-          class="plugin-card installed"
+          class="plugin-card installed animate-scale-in"
+          :style="{ animationDelay: `${0.3 + index * 0.05}s` }"
           @click="openCloudService(plugin)"
         >
           <div class="card-header">
@@ -77,15 +78,16 @@
     </div>
 
     <!-- 可用的云服务插件 -->
-    <div class="section">
+    <div class="section animate-fade-in" :style="{ animationDelay: '0.35s' }">
       <h2>{{ installedCloudPlugins.length > 0 ? '添加更多云服务' : '选择云服务' }}</h2>
       <p class="section-desc">安装云服务插件以管理您的云资源</p>
       <div class="provider-grid">
         <el-card
-          v-for="provider in availableProviders"
+          v-for="(provider, index) in availableProviders"
           :key="provider.id"
-          class="provider-card"
+          class="provider-card animate-slide-up"
           :class="{ 'coming-soon': !provider.pluginAvailable }"
+          :style="{ animationDelay: `${0.4 + index * 0.05}s` }"
         >
           <div class="provider-icon">{{ provider.icon }}</div>
           <div class="provider-info">
@@ -112,7 +114,7 @@
     </div>
 
     <!-- 快速配置（向后兼容） -->
-    <div class="section legacy-section">
+    <div class="section legacy-section animate-fade-in" :style="{ animationDelay: '0.5s' }">
       <div class="section-header">
         <h2>快速配置</h2>
         <el-tag type="warning" size="small">传统模式</el-tag>
@@ -120,9 +122,10 @@
       <p class="section-desc">直接配置云服务 API（不使用插件）</p>
       <div class="legacy-providers">
         <div
-          v-for="provider in legacyProviders"
+          v-for="(provider, index) in legacyProviders"
           :key="provider.id"
-          class="legacy-item"
+          class="legacy-item animate-scale-in"
+          :style="{ animationDelay: `${0.55 + index * 0.03}s` }"
           @click="configureLegacy(provider)"
         >
           <span class="legacy-icon">{{ provider.icon }}</span>
@@ -440,62 +443,117 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
+// 动画关键帧
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0; 
+    transform: translateY(20px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
+@keyframes scaleIn {
+  from { 
+    opacity: 0; 
+    transform: scale(0.9); 
+  }
+  to { 
+    opacity: 1; 
+    transform: scale(1); 
+  }
+}
+
+// 动画类
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out both;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.5s ease-out both;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.4s ease-out both;
+}
+
 .cloud-page {
   max-width: 1200px;
   margin: 0 auto;
 }
 
 .page-header {
-  margin-bottom: 24px;
+  margin-bottom: var(--space-6);
 
   h1 {
-    font-size: 24px;
+    font-size: var(--text-xl);
     font-weight: 600;
     margin-bottom: 4px;
   }
 
   .subtitle {
     color: var(--text-secondary);
-    font-size: 14px;
+    font-size: var(--text-sm);
   }
 }
 
 .stats-row {
   display: flex;
-  gap: 16px;
-  margin-bottom: 32px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
 
   .stat-card {
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 20px 24px;
+    gap: var(--space-4);
+    padding: var(--space-5);
     background: var(--bg-secondary);
-    border-radius: 12px;
-    min-width: 160px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    min-width: 180px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    &:hover {
+      border-color: var(--primary-color);
+      box-shadow: 0 8px 25px -5px rgba(99, 102, 241, 0.25);
+      transform: translateY(-4px);
+
+      .stat-icon {
+        transform: scale(1.1);
+      }
+    }
 
     .stat-icon {
       width: 48px;
       height: 48px;
-      border-radius: 12px;
+      border-radius: var(--radius-lg);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 24px;
+      transition: transform 0.3s ease;
 
       &.installed {
-        background: rgba(var(--el-color-success-rgb), 0.1);
-        color: var(--el-color-success);
+        background: var(--success-light);
+        color: var(--success-color);
       }
 
       &.connected {
-        background: rgba(var(--el-color-primary-rgb), 0.1);
-        color: var(--el-color-primary);
+        background: var(--primary-light);
+        color: var(--primary-color);
       }
 
       &.available {
-        background: rgba(var(--el-color-warning-rgb), 0.1);
-        color: var(--el-color-warning);
+        background: var(--warning-light);
+        color: var(--warning-color);
       }
     }
 
@@ -504,12 +562,12 @@ onMounted(() => {
       flex-direction: column;
 
       .stat-value {
-        font-size: 28px;
+        font-size: var(--text-2xl);
         font-weight: 600;
       }
 
       .stat-label {
-        font-size: 13px;
+        font-size: var(--text-sm);
         color: var(--text-secondary);
       }
     }
@@ -517,51 +575,54 @@ onMounted(() => {
 }
 
 .section {
-  margin-bottom: 32px;
+  margin-bottom: var(--space-8);
 
   h2 {
-    font-size: 16px;
+    font-size: var(--text-lg);
     font-weight: 600;
-    margin-bottom: 8px;
+    margin-bottom: var(--space-2);
   }
 
   .section-desc {
     color: var(--text-secondary);
-    font-size: 13px;
-    margin-bottom: 16px;
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-4);
   }
 
   .section-header {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 8px;
+    gap: var(--space-3);
+    margin-bottom: var(--space-2);
   }
 }
 
 .installed-plugins {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .plugin-card {
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid var(--border-color);
 
   &:hover {
-    border-color: var(--el-color-primary);
+    border-color: var(--primary-color);
+    box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.2);
+    transform: translateY(-3px);
   }
 
   &.installed {
-    border-left: 3px solid var(--el-color-success);
+    border-left: 3px solid var(--success-color);
   }
 
   .card-header {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 12px;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
 
     .plugin-emoji {
       font-size: 32px;
@@ -571,10 +632,10 @@ onMounted(() => {
       flex: 1;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--space-2);
 
       h3 {
-        font-size: 16px;
+        font-size: var(--text-base);
         font-weight: 600;
         margin: 0;
       }
@@ -582,22 +643,22 @@ onMounted(() => {
   }
 
   .plugin-desc {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
-    margin-bottom: 12px;
+    margin-bottom: var(--space-3);
   }
 
   .quick-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--space-2);
   }
 }
 
 .provider-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .provider-card {
@@ -605,72 +666,89 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 24px 20px;
-  transition: all 0.2s;
+  padding: var(--space-6) var(--space-5);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid var(--border-color);
 
   &:hover:not(.coming-soon) {
-    border-color: var(--el-color-primary);
+    border-color: var(--primary-color);
+    box-shadow: 0 8px 25px -5px rgba(99, 102, 241, 0.2);
+    transform: translateY(-4px);
+
+    .provider-icon {
+      transform: scale(1.1);
+    }
   }
 
   &.coming-soon {
-    opacity: 0.7;
+    opacity: 0.6;
   }
 
   .provider-icon {
     font-size: 48px;
-    margin-bottom: 12px;
+    margin-bottom: var(--space-3);
+    transition: transform 0.3s ease;
   }
 
   .provider-info {
     flex: 1;
-    margin-bottom: 16px;
+    margin-bottom: var(--space-4);
 
     h3 {
-      font-size: 16px;
+      font-size: var(--text-base);
       font-weight: 600;
-      margin-bottom: 8px;
+      margin-bottom: var(--space-2);
     }
 
     p {
-      font-size: 13px;
+      font-size: var(--text-sm);
       color: var(--text-secondary);
-      margin-bottom: 12px;
+      margin-bottom: var(--space-3);
     }
 
     .provider-features {
       display: flex;
       flex-wrap: wrap;
       justify-content: center;
-      gap: 6px;
+      gap: var(--space-1);
     }
   }
 }
 
 .legacy-section {
   background: var(--bg-secondary);
-  padding: 20px;
-  border-radius: 12px;
-  margin-top: 40px;
+  padding: var(--space-5);
+  border-radius: var(--radius-xl);
+  margin-top: var(--space-10);
+  border: 1px solid var(--border-color);
 }
 
 .legacy-providers {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .legacy-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  background: var(--bg-primary);
-  border-radius: 8px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
   &:hover {
     background: var(--bg-tertiary);
+    border-color: var(--primary-color);
+    transform: translateX(4px);
+
+    .arrow {
+      transform: translateX(4px);
+      color: var(--primary-color);
+    }
   }
 
   .legacy-icon {
@@ -678,13 +756,14 @@ onMounted(() => {
   }
 
   .legacy-name {
-    font-size: 14px;
+    font-size: var(--text-sm);
     font-weight: 500;
   }
 
   .arrow {
     margin-left: auto;
     color: var(--text-secondary);
+    transition: all 0.3s ease;
   }
 }
 </style>

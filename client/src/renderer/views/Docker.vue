@@ -1671,9 +1671,31 @@ async function loadHubTrending() {
 </script>
 
 <style lang="scss" scoped>
+// 动画关键帧
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.1); }
+}
+
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 3px currentColor; }
+  50% { box-shadow: 0 0 8px currentColor; }
+}
+
 .docker-page {
   max-width: 1400px;
   margin: 0 auto;
+  animation: fadeIn 0.4s ease-out;
 }
 
 .page-header {
@@ -1681,6 +1703,7 @@ async function loadHubTrending() {
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 16px;
+  animation: slideUp 0.4s ease-out;
 
   .header-left {
     h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
@@ -1696,10 +1719,12 @@ async function loadHubTrending() {
 
 .empty-state {
   padding: 60px 0;
+  animation: fadeIn 0.5s ease-out;
 }
 
 .docker-tabs {
   margin-bottom: 16px;
+  animation: slideUp 0.4s ease-out 0.1s both;
 
   .tab-label {
     display: flex;
@@ -1713,6 +1738,7 @@ async function loadHubTrending() {
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 16px;
+  animation: fadeIn 0.3s ease-out;
 }
 
 .toolbar {
@@ -1723,6 +1749,15 @@ async function loadHubTrending() {
 }
 
 .data-table {
+  :deep(.el-table__row) {
+    transition: all 0.2s ease;
+    
+    &:hover {
+      background-color: var(--bg-tertiary) !important;
+      transform: scale(1.002);
+    }
+  }
+
   .cell-name {
     display: flex;
     align-items: center;
@@ -1732,9 +1767,18 @@ async function loadHubTrending() {
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      &.running { background: #22c55e; }
+      transition: all 0.3s ease;
+      
+      &.running { 
+        background: #22c55e; 
+        animation: glow 2s ease-in-out infinite;
+        color: #22c55e;
+      }
       &.exited, &.stopped { background: #ef4444; }
-      &.paused { background: #f59e0b; }
+      &.paused { 
+        background: #f59e0b; 
+        animation: pulse 1.5s ease-in-out infinite;
+      }
     }
   }
 

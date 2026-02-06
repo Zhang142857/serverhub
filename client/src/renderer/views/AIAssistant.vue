@@ -9,25 +9,27 @@
         </el-button>
       </div>
       <div class="conversation-list">
-        <div
-          v-for="conv in aiStore.conversations"
-          :key="conv.id"
-          class="conversation-item"
-          :class="{ active: aiStore.currentConversationId === conv.id }"
-          @click="aiStore.switchConversation(conv.id)"
-        >
-          <div class="conv-icon">
-            <el-icon v-if="conv.agentMode"><Operation /></el-icon>
-            <el-icon v-else><ChatDotRound /></el-icon>
+        <TransitionGroup name="conv-list">
+          <div
+            v-for="conv in aiStore.conversations"
+            :key="conv.id"
+            class="conversation-item"
+            :class="{ active: aiStore.currentConversationId === conv.id }"
+            @click="aiStore.switchConversation(conv.id)"
+          >
+            <div class="conv-icon">
+              <el-icon v-if="conv.agentMode"><Operation /></el-icon>
+              <el-icon v-else><ChatDotRound /></el-icon>
+            </div>
+            <div class="conv-info">
+              <div class="conv-title">{{ conv.title }}</div>
+              <div class="conv-time">{{ formatDate(conv.updatedAt) }}</div>
+            </div>
+            <el-button class="conv-delete" text size="small" @click.stop="aiStore.deleteConversation(conv.id)">
+              <el-icon><Delete /></el-icon>
+            </el-button>
           </div>
-          <div class="conv-info">
-            <div class="conv-title">{{ conv.title }}</div>
-            <div class="conv-time">{{ formatDate(conv.updatedAt) }}</div>
-          </div>
-          <el-button class="conv-delete" text size="small" @click.stop="aiStore.deleteConversation(conv.id)">
-            <el-icon><Delete /></el-icon>
-          </el-button>
-        </div>
+        </TransitionGroup>
         <el-empty v-if="aiStore.conversations.length === 0" description="暂无对话" :image-size="60" />
       </div>
     </div>
@@ -172,7 +174,8 @@ import ChatMessage from '@/components/ai/ChatMessage.vue'
 import TaskPlan from '@/components/ai/TaskPlan.vue'
 import {
   Plus, Delete, ChatDotRound, Operation, MagicStick, Promotion, Monitor, Warning,
-  Loading, Box, Document, Setting, Cpu, FolderOpened, CircleCheck, CircleClose
+  Loading, Box, Document, Setting, Cpu, FolderOpened, CircleCheck, CircleClose,
+  Upload, Search, Shield, Connection
 } from '@element-plus/icons-vue'
 
 const serverStore = useServerStore()
@@ -188,21 +191,25 @@ const pendingConfirm = ref<{ tool: string; arguments: Record<string, unknown>; d
 const connectedServers = computed(() => serverStore.connectedServers)
 const inputPlaceholder = computed(() => agentModeEnabled.value ? '输入任务，AI 将自动执行...' : '输入消息...')
 
-const categoryNames: Record<string, string> = { system: '系统', docker: 'Docker', file: '文件', network: '网络', database: '数据库', plugin: '插件' }
+const categoryNames: Record<string, string> = { system: '系统', docker: 'Docker', file: '文件', network: '网络', database: '数据库', plugin: '插件', deployment: '部署', monitoring: '监控诊断' }
 
 const quickActions = [
-  { icon: Monitor, title: '系统状态', desc: '查看 CPU、内存、磁盘使用情况', prompt: '查看当前服务器的系统状态' },
+  { icon: Cpu, title: '一键部署', desc: '快速部署常用应用', prompt: '帮我部署一个应用，先告诉我支持哪些应用' },
+  { icon: Monitor, title: '系统诊断', desc: '智能分析系统健康状态', prompt: '对当前服务器进行全面的系统诊断' },
   { icon: Box, title: '容器管理', desc: '列出并管理 Docker 容器', prompt: '列出所有 Docker 容器的状态' },
-  { icon: Document, title: '日志分析', desc: '分析系统和应用日志', prompt: '分析最近的系统错误日志' },
-  { icon: Setting, title: '服务管理', desc: '查看和管理系统服务', prompt: '列出所有运行中的服务' },
-  { icon: Cpu, title: '进程分析', desc: '分析高资源占用进程', prompt: '列出占用资源最高的进程' },
+  { icon: Document, title: '日志分析', desc: '智能分析系统日志', prompt: '分析 /var/log/syslog 的最近日志，找出错误和警告' },
+  { icon: Setting, title: '安全扫描', desc: '检查服务器安全配置', prompt: '对服务器进行安全扫描，检查潜在风险' },
   { icon: FolderOpened, title: '文件操作', desc: '浏览和管理文件', prompt: '列出 /var/log 目录下的文件' },
 ]
 
 const toolIconMap: Record<string, unknown> = {
   get_system_info: Monitor, execute_command: Monitor, list_services: Setting, service_action: Setting,
   list_processes: Cpu, kill_process: Cpu, list_containers: Box, container_action: Box,
-  list_directory: FolderOpened, read_file: Document, write_file: Document
+  list_directory: FolderOpened, read_file: Document, write_file: Document,
+  // 部署工具
+  deploy_application: Upload, create_nginx_config: Setting, list_deployable_apps: Box,
+  // 监控诊断工具
+  diagnose_system: Monitor, analyze_logs: Search, security_scan: Shield, check_port: Connection
 }
 
 function getToolIcon(name: string) { return toolIconMap[name] || Monitor }

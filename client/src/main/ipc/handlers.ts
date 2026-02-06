@@ -1177,6 +1177,9 @@ export function setupIpcHandlers() {
       }
     })
   })
+
+  // 返回serverConnections供其他模块使用
+  return serverConnections
 }
 
 // 类型定义

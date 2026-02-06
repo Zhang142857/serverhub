@@ -157,6 +157,30 @@ const staticRoutes: RouteRecordRaw[] = [
     meta: { title: '告警系统', icon: 'Bell' }
   },
   {
+    path: '/network',
+    name: 'NetworkTools',
+    component: () => import('../views/NetworkTools.vue'),
+    meta: { title: '网络工具', icon: 'Connection' }
+  },
+  {
+    path: '/backup',
+    name: 'Backup',
+    component: () => import('../views/Backup/BackupList.vue'),
+    meta: { title: '备份管理', icon: 'FolderOpened' }
+  },
+  {
+    path: '/cron-jobs',
+    name: 'CronJobs',
+    component: () => import('../views/CronJobs/TaskList.vue'),
+    meta: { title: '计划任务', icon: 'Clock' }
+  },
+  {
+    path: '/app-store',
+    name: 'AppStore',
+    component: () => import('../views/AppStore.vue'),
+    meta: { title: '应用商店', icon: 'Shop' }
+  },
+  {
     path: '/plugins',
     name: 'Plugins',
     component: () => import('../views/Plugins.vue'),

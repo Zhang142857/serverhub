@@ -98,6 +98,10 @@
           <el-icon><Bell /></el-icon>
           <span>告警系统</span>
         </el-menu-item>
+        <el-menu-item index="/network">
+          <el-icon><Connection /></el-icon>
+          <span>网络工具</span>
+        </el-menu-item>
 
         <!-- 多服务器模式才显示 -->
         <template v-if="hasMultipleServers">
@@ -107,6 +111,19 @@
             <span>服务器管理</span>
           </el-menu-item>
         </template>
+
+        <el-divider />
+        <div class="menu-group-title">数据管理</div>
+
+        <!-- 数据管理 -->
+        <el-menu-item index="/backup">
+          <el-icon><FolderOpened /></el-icon>
+          <span>备份管理</span>
+        </el-menu-item>
+        <el-menu-item index="/cron-jobs">
+          <el-icon><Clock /></el-icon>
+          <span>计划任务</span>
+        </el-menu-item>
 
         <el-divider />
         <div class="menu-group-title">扩展</div>
@@ -119,6 +136,10 @@
         <el-menu-item index="/cloud">
           <el-icon><Cloudy /></el-icon>
           <span>云服务</span>
+        </el-menu-item>
+        <el-menu-item index="/app-store">
+          <el-icon><Shop /></el-icon>
+          <span>应用商店</span>
         </el-menu-item>
         <el-menu-item index="/plugins">
           <el-icon><Grid /></el-icon>
@@ -202,6 +223,9 @@ import {
   Calendar,
   Clock,
   Collection,
+  FolderOpened,
+  Shop,
+  Tools,
   Compass,
   CreditCard,
   Delete,
