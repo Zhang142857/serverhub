@@ -155,6 +155,7 @@
                 <el-option label="OpenAI" value="openai" />
                 <el-option label="Claude" value="claude" />
                 <el-option label="DeepSeek" value="deepseek" />
+                <el-option label="硅基流动" value="siliconflow" />
                 <el-option label="Google Gemini" value="gemini" />
                 <el-option label="Groq" value="groq" />
                 <el-option label="Mistral AI" value="mistral" />
@@ -229,6 +230,21 @@
                 <el-select v-model="settings.ai.deepseekModel" filterable allow-create style="width: 200px">
                   <el-option label="DeepSeek Chat" value="deepseek-chat" />
                   <el-option label="DeepSeek Reasoner" value="deepseek-reasoner" />
+                </el-select>
+              </el-form-item>
+            </template>
+
+            <!-- 硅基流动 -->
+            <template v-if="settings.ai.provider === 'siliconflow'">
+              <el-form-item label="API Key">
+                <el-input v-model="settings.ai.siliconflowKey" type="password" show-password style="width: 300px" />
+              </el-form-item>
+              <el-form-item label="模型">
+                <el-select v-model="settings.ai.siliconflowModel" filterable allow-create style="width: 300px">
+                  <el-option label="DeepSeek V3" value="deepseek-ai/DeepSeek-V3" />
+                  <el-option label="Qwen 2.5 72B" value="Qwen/Qwen2.5-72B-Instruct" />
+                  <el-option label="Qwen 2.5 Coder 32B" value="Qwen/Qwen2.5-Coder-32B-Instruct" />
+                  <el-option label="GLM-4 9B" value="THUDM/glm-4-9b-chat" />
                 </el-select>
               </el-form-item>
             </template>
@@ -981,6 +997,8 @@ const defaultSettings = {
     claudeModel: 'claude-3-5-sonnet-20241022',
     deepseekKey: '',
     deepseekModel: 'deepseek-chat',
+    siliconflowKey: '',
+    siliconflowModel: 'deepseek-ai/DeepSeek-V3',
     geminiKey: '',
     geminiModel: 'gemini-2.0-flash',
     groqKey: '',
@@ -1107,6 +1125,7 @@ function saveSettings() {
         openai: { apiKey: ai.openaiKey, baseUrl: ai.openaiBaseUrl, model: ai.openaiModel },
         claude: { apiKey: ai.claudeKey, model: ai.claudeModel },
         deepseek: { apiKey: ai.deepseekKey, model: ai.deepseekModel },
+        siliconflow: { apiKey: ai.siliconflowKey, model: ai.siliconflowModel },
         gemini: { apiKey: ai.geminiKey, model: ai.geminiModel },
         groq: { apiKey: ai.groqKey, model: ai.groqModel },
         mistral: { apiKey: ai.mistralKey, model: ai.mistralModel },

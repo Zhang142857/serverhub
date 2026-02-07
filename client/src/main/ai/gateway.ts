@@ -24,7 +24,7 @@ import { taskTools } from './tools/task'
 export type CommandPolicy = 'auto-all' | 'auto-safe' | 'auto-file' | 'manual-all'
 
 export interface AIConfig {
-  provider: 'openai' | 'claude' | 'ollama' | 'deepseek' | 'gemini' | 'groq' | 'mistral' | 'openrouter' | 'custom'
+  provider: 'openai' | 'claude' | 'ollama' | 'deepseek' | 'gemini' | 'groq' | 'mistral' | 'openrouter' | 'siliconflow' | 'custom'
   apiKey?: string
   baseUrl?: string
   model?: string
@@ -144,6 +144,7 @@ export class AIGateway extends EventEmitter {
       groq: 'https://api.groq.com/openai',
       mistral: 'https://api.mistral.ai',
       openrouter: 'https://openrouter.ai/api',
+      siliconflow: 'https://api.siliconflow.cn',
       ollama: 'http://localhost:11434',
     }
     let url = this.config.baseUrl || defaults[this.config.provider] || 'https://api.openai.com'
