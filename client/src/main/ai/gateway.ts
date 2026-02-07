@@ -121,7 +121,9 @@ export class AIGateway extends EventEmitter implements AIProvider {
     })
 
     // 设置 AI 提供者
-    this.reactEngine.setAIProvider(this)
+    this.reactEngine.setAIProvider({
+      chat: (messages, options) => this.chatWithTools(messages, options)
+    })
 
     // 转发 ReAct 引擎事件
     this.setupReActEvents()
