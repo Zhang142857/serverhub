@@ -421,20 +421,36 @@ export class AIGateway extends EventEmitter implements AIProvider {
     }
   ): Promise<AIResponse> {
     const url = `${this.getOpenAICompatibleBaseUrl()}/v1/chat/completions`
+    const hasTools = options?.tools && options.tools.length > 0
+
+    const body: any = {
+      model: this.config.model || 'gpt-4',
+      messages,
+      stream: false
+    }
+    if (hasTools) {
+      body.tools = options!.tools
+      body.tool_choice = 'auto'
+    }
+
+    const headers = {
+      'Authorization': `Bearer ${this.config.apiKey}`,
+      'Content-Type': 'application/json'
+    }
 
     try {
-      const response = await this.httpClient.post(url, {
-        model: this.config.model || 'gpt-4',
-        messages,
-        stream: false,
-        tools: options?.tools,
-        tool_choice: options?.tools?.length ? 'auto' : undefined
-      }, {
-        headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
-          'Content-Type': 'application/json'
+      let response: any
+      try {
+        response = await this.httpClient.post(url, body, { headers })
+      } catch (err: any) {
+        // 如果带 tools 请求返回 403/400，降级为不带 tools 重试
+        if (hasTools && (err.response?.status === 403 || err.response?.status === 400)) {
+          const { tools, tool_choice, ...bodyNoTools } = body
+          response = await this.httpClient.post(url, bodyNoTools, { headers })
+        } else {
+          throw err
         }
-      })
+      }
 
       const assistantMessage = response.data.choices?.[0]?.message
       return {
@@ -444,8 +460,9 @@ export class AIGateway extends EventEmitter implements AIProvider {
       }
     } catch (err: any) {
       const status = err.response?.status
-      const detail = err.response?.data?.error?.message || err.message
-      throw new Error(`AI 请求失败 [${this.config.provider}] ${url} → ${status}: ${detail}`)
+      const data = err.response?.data
+      const detail = (typeof data === 'string' ? data : data?.error?.message || data?.message) || err.message
+      throw new Error(`AI 请求失败 [${this.config.provider}] model=${body.model} → ${status}: ${detail}`)
     }
   }
 
@@ -618,23 +635,36 @@ export class AIGateway extends EventEmitter implements AIProvider {
 
     while (toolCallCount < this.maxToolCalls) {
       let response: any
+      const body: any = {
+        model: this.config.model || 'gpt-4',
+        messages: currentMessages,
+        stream: false
+      }
+      if (tools?.length) {
+        body.tools = tools
+        body.tool_choice = 'auto'
+      }
       try {
-        response = await this.httpClient.post(url, {
-          model: this.config.model || 'gpt-4',
-          messages: currentMessages,
-          stream: false,
-          tools: tools,
-          tool_choice: tools?.length ? 'auto' : undefined
-        }, {
-          headers: {
-            'Authorization': `Bearer ${this.config.apiKey}`,
-            'Content-Type': 'application/json'
-          }
-        })
+        try {
+          response = await this.httpClient.post(url, body, {
+            headers: {
+              'Authorization': `Bearer ${this.config.apiKey}`,
+              'Content-Type': 'application/json'
+            }
+          })
+        } catch (err: any) {
+          if (tools?.length && (err.response?.status === 403 || err.response?.status === 400)) {
+            const { tools: _t, tool_choice: _tc, ...bodyNoTools } = body
+            response = await this.httpClient.post(url, bodyNoTools, {
+              headers: { 'Authorization': `Bearer ${this.config.apiKey}`, 'Content-Type': 'application/json' }
+            })
+          } else { throw err }
+        }
       } catch (err: any) {
         const status = err.response?.status
-        const detail = err.response?.data?.error?.message || err.message
-        throw new Error(`AI 请求失败 [${this.config.provider}] ${url} → ${status}: ${detail}`)
+        const data = err.response?.data
+        const detail = (typeof data === 'string' ? data : data?.error?.message || data?.message) || err.message
+        throw new Error(`AI 请求失败 [${this.config.provider}] model=${body.model} → ${status}: ${detail}`)
       }
 
       const assistantMessage = response.data.choices?.[0]?.message
