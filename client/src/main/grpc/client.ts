@@ -4,6 +4,7 @@ import * as tls from 'tls'
 import { join } from 'path'
 import { EventEmitter } from 'events'
 import { app } from 'electron'
+import { getCertificate } from '../cert-store'
 import type {
   ServerConfig,
   ApiSystemInfo,
@@ -60,8 +61,15 @@ export class GrpcClient extends EventEmitter {
     this.metadata.set('authorization', `Bearer ${config.token}`)
   }
 
-  // 通过 TLS 握手获取服务器自签名证书（Trust On First Use）
-  private fetchServerCert(): Promise<Buffer> {
+  // 获取服务器证书：优先从本地存储读取，否则通过 TLS 握手获取
+  private async fetchServerCert(): Promise<Buffer> {
+    // 尝试从本地证书存储读取
+    const localCert = getCertificate(this.config.id)
+    if (localCert) {
+      return Buffer.from(localCert)
+    }
+
+    // 本地没有证书，通过 TLS 握手获取（Trust On First Use）
     return new Promise((resolve, reject) => {
       const socket = tls.connect(
         { host: this.config.host, port: this.config.port, rejectUnauthorized: false },

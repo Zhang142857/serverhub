@@ -69,13 +69,23 @@ const electronAPI: ElectronAPI = {
 
   // SSH 安装
   ssh: {
-    installAgent: (params: any): Promise<{ success: boolean; port: number; token: string; error?: string }> =>
+    installAgent: (params: any): Promise<{ success: boolean; port: number; token: string; certificate?: string; error?: string }> =>
       ipcRenderer.invoke('ssh:installAgent', params),
     onInstallLog: (callback: (log: { text: string; type: string }) => void): (() => void) => {
       const handler = (_: any, log: any) => callback(log)
       ipcRenderer.on('ssh:install:log', handler)
       return () => ipcRenderer.removeListener('ssh:install:log', handler)
     }
+  },
+
+  // 证书管理
+  cert: {
+    save: (serverId: string, certificate: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke('cert:save', serverId, certificate),
+    get: (serverId: string): Promise<string | null> =>
+      ipcRenderer.invoke('cert:get', serverId),
+    delete: (serverId: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke('cert:delete', serverId)
   },
 
   // 容器管理

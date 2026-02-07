@@ -6,6 +6,7 @@ import { setupBackupHandlers } from './ipc/backup-handlers'
 import { setupTaskHandlers, initTaskScheduler } from './ipc/task-handlers'
 import { setupAppStoreHandlers, initAppStore } from './ipc/app-store-handlers'
 import { registerSshHandlers } from './ipc/ssh-install'
+import { registerCertHandlers } from './ipc/cert-handlers'
 
 // 禁用硬件加速（可选，某些系统上可能需要）
 // app.disableHardwareAcceleration()
@@ -86,6 +87,7 @@ app.whenReady().then(async () => {
   setupTaskHandlers()
   setupAppStoreHandlers(serverConnections)
   registerSshHandlers()
+  registerCertHandlers()
   
   // 初始化任务调度器和应用商店
   await initTaskScheduler()

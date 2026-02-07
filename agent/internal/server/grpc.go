@@ -859,3 +859,25 @@ func (s *AgentServer) handleEmergencyCommand(command string, args []string) *pb.
 		return nil
 	}
 }
+
+// DownloadCertificate 下载 TLS 证书
+func (s *AgentServer) DownloadCertificate(ctx context.Context, req *pb.Empty) (*pb.CertificateResponse, error) {
+	certFile := os.Getenv("TLS_CERT_FILE")
+	if certFile == "" {
+		certFile = "/var/lib/runixo/tls/cert.pem"
+	}
+
+	certData, err := os.ReadFile(certFile)
+	if err != nil {
+		log.Error().Err(err).Str("file", certFile).Msg("读取证书文件失败")
+		return nil, status.Errorf(codes.NotFound, "证书文件不存在: %v", err)
+	}
+
+	// 计算证书指纹（简化版，实际应该解析证书后计算）
+	fingerprint := fmt.Sprintf("%x", certData[:32])
+
+	return &pb.CertificateResponse{
+		Certificate: string(certData),
+		Fingerprint: fingerprint,
+	}, nil
+}

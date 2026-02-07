@@ -45,6 +45,9 @@ service AgentService {
   
   // HTTP 代理请求（通用）
   rpc ProxyHttpRequest(HttpProxyRequest) returns (HttpProxyResponse);
+
+  // TLS 证书管理
+  rpc DownloadCertificate(Empty) returns (CertificateResponse);
 }
 
 // 空消息
@@ -573,4 +576,10 @@ message UpdateRecord {
   int64 timestamp = 3;
   bool success = 4;
   string error = 5;
+}
+
+// 证书响应
+message CertificateResponse {
+  string certificate = 1;  // PEM 格式的证书内容
+  string fingerprint = 2;  // 证书指纹（SHA256）
 }

@@ -111,6 +111,7 @@
                 <el-dropdown-menu>
                   <el-dropdown-item command="terminal">终端</el-dropdown-item>
                   <el-dropdown-item command="files">文件管理</el-dropdown-item>
+                  <el-dropdown-item command="importCert">导入证书</el-dropdown-item>
                   <el-dropdown-item command="edit" divided>编辑</el-dropdown-item>
                   <el-dropdown-item command="delete">删除</el-dropdown-item>
                 </el-dropdown-menu>
@@ -384,6 +385,27 @@
         <el-button type="primary" @click="saveEditServer">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 导入证书对话框 -->
+    <el-dialog v-model="showImportCert" title="导入 TLS 证书" width="600px">
+      <el-alert type="info" :closable="false" style="margin-bottom: 16px">
+        <p>粘贴服务器的 TLS 证书内容（PEM 格式）</p>
+        <p style="margin-top: 8px; font-size: 12px">
+          在服务器上运行: <code>sudo cat /var/lib/runixo/tls/cert.pem</code>
+        </p>
+      </el-alert>
+      <el-input
+        v-model="importCertForm.certificate"
+        type="textarea"
+        :rows="12"
+        placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
+        style="font-family: monospace"
+      />
+      <template #footer>
+        <el-button @click="showImportCert = false">取消</el-button>
+        <el-button type="primary" @click="importCertificate" :loading="importingCert">导入</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -402,6 +424,7 @@ const showGroupDialog = ref(false)
 const showBatchCommand = ref(false)
 const showEditDialog = ref(false)
 const showSshInstall = ref(false)
+const showImportCert = ref(false)
 const sshStep = ref<'form' | 'progress'>('form')
 const sshInstalling = ref(false)
 const sshLogs = ref<{ text: string; type: string }[]>([])
@@ -417,6 +440,8 @@ const batchExecuting = ref(false)
 const batchResults = ref<BatchResult[]>([])
 const filterGroup = ref('')
 const newGroupName = ref('')
+const importCertForm = ref({ serverId: '', certificate: '' })
+const importingCert = ref(false)
 
 interface BatchResult {
   serverId: string
@@ -537,16 +562,28 @@ async function startSshInstall() {
 
     if (result.success) {
       sshLogs.value.push({ text: '\n🎉 安装成功！正在添加服务器...', type: 'success' })
-      serverStore.addServer({
+      const id = serverStore.addServer({
         name: f.name, host: f.host, port: result.port,
         token: result.token, group: f.group, useTls: true
       })
+      
+      // 保存证书
+      if (result.certificate) {
+        try {
+          await window.electronAPI.cert.save(id, result.certificate)
+          sshLogs.value.push({ text: '✓ 证书已保存', type: 'success' })
+        } catch (e: any) {
+          sshLogs.value.push({ text: `⚠ 证书保存失败: ${e.message}`, type: 'error' })
+        }
+      }
+      
       ElMessage.success('Agent 安装成功，服务器已添加')
       // 自动连接
-      const newSrv = serverStore.servers.find(s => s.host === f.host && s.token === result.token)
-      if (newSrv) {
-        try { await serverStore.connectServer(newSrv.id); sshLogs.value.push({ text: '✓ 已自动连接', type: 'success' }) }
-        catch { sshLogs.value.push({ text: '⚠ 自动连接失败，请手动连接', type: 'error' }) }
+      try { 
+        await serverStore.connectServer(id)
+        sshLogs.value.push({ text: '✓ 已自动连接', type: 'success' })
+      } catch { 
+        sshLogs.value.push({ text: '⚠ 自动连接失败，请手动连接', type: 'error' })
       }
     } else {
       sshLogs.value.push({ text: `\n❌ 安装失败: ${result.error}`, type: 'error' })
@@ -675,6 +712,9 @@ function handleAction(action: string, server: Server) {
     case 'files':
       router.push(`/files/${server.id}`)
       break
+    case 'importCert':
+      openImportCertDialog(server)
+      break
     case 'edit':
       openEditDialog(server)
       break
@@ -684,6 +724,30 @@ function handleAction(action: string, server: Server) {
         ElMessage.success('已删除')
       }).catch(() => {})
       break
+  }
+}
+
+function openImportCertDialog(server: Server) {
+  importCertForm.value = { serverId: server.id, certificate: '' }
+  showImportCert.value = true
+}
+
+async function importCertificate() {
+  const f = importCertForm.value
+  if (!f.certificate.trim()) {
+    ElMessage.warning('请输入证书内容')
+    return
+  }
+  
+  importingCert.value = true
+  try {
+    await window.electronAPI.cert.save(f.serverId, f.certificate.trim())
+    ElMessage.success('证书已导入')
+    showImportCert.value = false
+  } catch (e: any) {
+    ElMessage.error(`导入失败: ${e.message}`)
+  } finally {
+    importingCert.value = false
   }
 }
 

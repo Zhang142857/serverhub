@@ -499,6 +499,17 @@ async function startSshInstall() {
         name: f.name, host: f.host, port: result.port,
         token: result.token, useTls: true
       })
+      
+      // 保存证书
+      if (result.certificate) {
+        try {
+          await window.electronAPI.cert.save(id, result.certificate)
+          sshLogs.value.push({ text: '✓ 证书已保存', type: 'success' })
+        } catch (e: any) {
+          sshLogs.value.push({ text: `⚠ 证书保存失败: ${e.message}`, type: 'error' })
+        }
+      }
+      
       ElMessage.success('Agent 安装成功，服务器已添加')
       try { 
         await serverStore.connectServer(id)

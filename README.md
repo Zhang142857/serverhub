@@ -47,19 +47,170 @@
 
 ## 🚀 快速开始
 
-### 安装 Agent
+### 方式一：SSH 自动安装（推荐）
 
-在目标服务器上运行：
+在客户端中使用 SSH 安装功能，自动完成 Agent 安装、TLS 证书生成和配置。
+
+1. 打开客户端，进入「服务器」页面
+2. 点击「SSH 安装」按钮
+3. 填写服务器 SSH 连接信息
+4. 等待自动安装完成
+
+安装脚本会自动：
+- 下载并安装 Agent
+- 生成 TLS 自签名证书
+- 配置并启动服务
+- 将证书回传给客户端
+
+### 方式二：手动安装
+
+#### 在目标服务器上安装 Agent
 
 ```bash
-# Linux/macOS
-curl -fsSL https://runixo.io/install.sh | bash
+# 使用一键安装脚本（推荐）
+curl -fsSL https://raw.githubusercontent.com/Zhang142857/runixo/main/scripts/install.sh | sudo bash
 
 # 或手动安装
 wget https://github.com/runixo/runixo/releases/latest/download/runixo-agent-linux-amd64
 chmod +x runixo-agent-linux-amd64
 sudo mv runixo-agent-linux-amd64 /usr/local/bin/runixo-agent
 ```
+
+#### 查看连接信息
+
+```bash
+# 查看 IP、端口和 Token
+sudo runixo info
+
+# 仅查看 Token
+sudo runixo token
+```
+
+#### 导出 TLS 证书（如需手动导入）
+
+```bash
+# 查看证书内容
+sudo cat /var/lib/runixo/tls/cert.pem
+
+# 或复制到剪贴板（需要 xclip）
+sudo cat /var/lib/runixo/tls/cert.pem | xclip -selection clipboard
+```
+
+#### 在客户端中添加服务器
+
+1. 打开客户端，进入「服务器」页面
+2. 点击「添加服务器」
+3. 填写服务器信息（IP、端口、Token）
+4. 如果连接失败，点击服务器操作菜单 → 「导入证书」
+5. 粘贴证书内容并导入
+
+## 🔐 TLS 证书管理
+
+### 自动证书管理
+
+Agent 首次启动时会自动生成自签名 TLS 证书，证书有效期 10 年。证书包含：
+- 服务器所有网络接口的 IP 地址
+- localhost 域名
+- 自动续期（重启 Agent 时检测）
+
+### 手动重新生成证书
+
+```bash
+# 删除旧证书
+sudo rm -rf /var/lib/runixo/tls
+
+# 重启 Agent（会自动生成新证书）
+sudo systemctl restart runixo-agent
+
+# 查看新证书
+sudo cat /var/lib/runixo/tls/cert.pem
+```
+
+### 客户端证书导入
+
+**自动导入（SSH 安装）：**
+SSH 安装时自动获取并保存证书，无需手动操作。
+
+**手动导入：**
+1. 在服务器上获取证书：`sudo cat /var/lib/runixo/tls/cert.pem`
+2. 在客户端服务器列表中，点击服务器操作菜单 → 「导入证书」
+3. 粘贴证书内容并导入
+
+**证书存储位置：**
+- Windows: `%APPDATA%\Runixo\certificates\`
+- macOS: `~/Library/Application Support/Runixo/certificates/`
+- Linux: `~/.config/Runixo/certificates/`
+
+### 故障排查
+
+**连接错误：`ECONNRESET` 或 `certificate verify failed`**
+
+原因：客户端没有服务器的 TLS 证书
+
+解决方案：
+1. 检查 Agent 配置：`sudo cat /etc/runixo/agent.yaml`，确认 `tls.enabled: true`
+2. 确认证书存在：`sudo ls -la /var/lib/runixo/tls/`
+3. 在客户端手动导入证书（见上文）
+4. 或重新通过 SSH 安装
+
+**证书过期或无效**
+
+```bash
+# 重新生成证书
+sudo rm -rf /var/lib/runixo/tls
+sudo systemctl restart runixo-agent
+
+# 在客户端重新导入证书
+```
+
+## 🛠️ Agent 管理
+
+### 服务管理
+
+```bash
+# 查看状态
+sudo systemctl status runixo-agent
+
+# 启动服务
+sudo systemctl start runixo-agent
+
+# 停止服务
+sudo systemctl stop runixo-agent
+
+# 重启服务
+sudo systemctl restart runixo-agent
+
+# 查看日志
+sudo journalctl -u runixo-agent -f
+```
+
+### 配置文件
+
+配置文件位置：`/etc/runixo/agent.yaml`
+
+```yaml
+server:
+  host: "0.0.0.0"      # 监听地址
+  port: 9527           # gRPC 端口
+  tls:
+    enabled: true      # 启用 TLS（强烈推荐）
+
+auth:
+  token: "your-token"  # 认证令牌
+
+metrics:
+  interval: 2          # 指标采集间隔（秒）
+
+log:
+  level: "info"        # 日志级别：debug, info, warn, error
+```
+
+修改配置后需要重启服务：
+```bash
+sudo systemctl restart runixo-agent
+```
+
+### Token 管理
 
 生成认证令牌：
 

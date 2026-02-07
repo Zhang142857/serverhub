@@ -44,7 +44,7 @@ export function registerSshHandlers() {
     const conn = new Client()
     const rp = params.rootPassword
 
-    return new Promise<{ success: boolean; port: number; token: string; error?: string }>((resolve) => {
+    return new Promise<{ success: boolean; port: number; token: string; certificate?: string; error?: string }>((resolve) => {
       const connectConfig: any = {
         host: params.host,
         port: params.sshPort || 22,
@@ -62,7 +62,7 @@ export function registerSshHandlers() {
 
       conn.on('error', (err) => {
         sendLog(win, `❌ SSH 连接失败: ${err.message}`, 'error')
-        resolve({ success: false, port: 0, token: '', error: err.message })
+        resolve({ success: false, port: 0, token: '', certificate: '', error: err.message })
       })
 
       conn.on('ready', async () => {
@@ -78,7 +78,7 @@ export function registerSshHandlers() {
           if (arch !== 'amd64') {
             sendLog(win, `❌ 暂不支持 ${arch} 架构`, 'error')
             conn.end()
-            return resolve({ success: false, port: 0, token: '', error: `不支持的架构: ${arch}` })
+            return resolve({ success: false, port: 0, token: '', certificate: '', error: `不支持的架构: ${arch}` })
           }
 
           // ===== 清理所有旧版本 Agent =====
@@ -97,83 +97,53 @@ export function registerSshHandlers() {
           await sshExec(conn, sudoCmd('systemctl daemon-reload', rp))
           sendLog(win, '✓ 旧版本已清理', 'success')
 
-          // ===== 释放端口 =====
-          const port = 9527
-          sendLog(win, `检查端口 ${port} 占用...`)
-          const portCheck = await sshExec(conn, sudoCmd(`lsof -ti:${port} 2>/dev/null || true`, rp))
-          if (portCheck.stdout) {
-            sendLog(win, `端口 ${port} 被占用，正在释放...`)
-            await sshExec(conn, sudoCmd(`kill -9 $(lsof -ti:${port}) 2>/dev/null || true`, rp))
-            await new Promise(r => setTimeout(r, 1000))
-          }
-          sendLog(win, `✓ 端口 ${port} 可用`, 'success')
-
-          // ===== 下载 =====
-          sendLog(win, '下载 Runixo Agent...')
-          const dlUrl = 'https://raw.githubusercontent.com/Zhang142857/runixo/main/agent/runixo-agent-linux'
-          const dlCmd = `curl -fsSL -o /tmp/runixo-agent "${dlUrl}" 2>&1 || wget -q -O /tmp/runixo-agent "${dlUrl}" 2>&1`
-          const dlRes = await sshExec(conn, dlCmd)
-          if (dlRes.code !== 0) {
-            sendLog(win, `❌ 下载失败: ${dlRes.stderr || dlRes.stdout}`, 'error')
+          // ===== 下载并执行安装脚本 =====
+          sendLog(win, '下载安装脚本...')
+          const installScript = 'https://raw.githubusercontent.com/Zhang142857/runixo/main/scripts/install.sh'
+          const installCmd = sudoCmd(`bash -c "curl -fsSL ${installScript} | bash"`, rp)
+          
+          sendLog(win, '执行安装脚本...')
+          const installRes = await sshExec(conn, installCmd)
+          
+          if (installRes.code !== 0) {
+            sendLog(win, `❌ 安装失败: ${installRes.stderr || installRes.stdout}`, 'error')
             conn.end()
-            return resolve({ success: false, port: 0, token: '', error: '下载 Agent 失败' })
+            return resolve({ success: false, port: 0, token: '', certificate: '', error: '安装失败' })
           }
-          sendLog(win, '✓ 下载完成', 'success')
-
-          // ===== 安装 =====
-          sendLog(win, '安装 Agent...')
-          await sshExec(conn, 'chmod +x /tmp/runixo-agent')
-          await sshExec(conn, sudoCmd('mv /tmp/runixo-agent /usr/local/bin/runixo-agent', rp))
-          await sshExec(conn, sudoCmd('mkdir -p /etc/runixo /var/lib/runixo', rp))
+          
           sendLog(win, '✓ 安装完成', 'success')
-
-          // ===== 生成 token =====
-          sendLog(win, '生成认证令牌...')
-          const tokenRes = await sshExec(conn, 'runixo-agent --gen-token 2>&1')
-          const token = tokenRes.stdout.match(/:\s*(.+)/)?.[1]?.trim() || tokenRes.stdout.trim()
+          
+          // 解析输出中的 token 和证书
+          const output = installRes.stdout + '\n' + installRes.stderr
+          const tokenMatch = output.match(/Token:\s*([a-f0-9]{64})/i)
+          const token = tokenMatch ? tokenMatch[1] : ''
+          
+          // 提取证书内容
+          const certMatch = output.match(/-----BEGIN RUNIXO CERTIFICATE-----([\s\S]*?)-----END RUNIXO CERTIFICATE-----/)
+          const certificate = certMatch ? certMatch[1].trim() : ''
+          
           if (!token || token.length < 10) {
-            sendLog(win, `❌ 生成令牌失败: ${tokenRes.stdout} ${tokenRes.stderr}`, 'error')
+            sendLog(win, `❌ 未能获取令牌`, 'error')
             conn.end()
-            return resolve({ success: false, port: 0, token: '', error: '生成令牌失败' })
+            return resolve({ success: false, port: 0, token: '', certificate: '', error: '未能获取令牌' })
           }
-          sendLog(win, '✓ 令牌已生成', 'success')
-
-          // ===== 写配置 =====
-          const configYaml = `server:\n  host: "0.0.0.0"\n  port: ${port}\n  tls:\n    enabled: false\nauth:\n  token: "${token}"\nmetrics:\n  interval: 2\nlog:\n  level: "info"`
-          await sshExec(conn, sudoCmd(`bash -c 'cat > /etc/runixo/agent.yaml << EOFCFG\n${configYaml}\nEOFCFG'`, rp))
-          await sshExec(conn, sudoCmd('chmod 600 /etc/runixo/agent.yaml', rp))
-          sendLog(win, '✓ 配置文件已写入', 'success')
-
-          // ===== 创建 systemd 服务 =====
-          sendLog(win, '配置系统服务...')
-          const serviceUnit = `[Unit]\nDescription=Runixo Agent\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/runixo-agent -config /etc/runixo/agent.yaml\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target`
-          await sshExec(conn, sudoCmd(`bash -c 'cat > /etc/systemd/system/runixo-agent.service << EOFSVC\n${serviceUnit}\nEOFSVC'`, rp))
-          await sshExec(conn, sudoCmd('systemctl daemon-reload', rp))
-          await sshExec(conn, sudoCmd('systemctl enable runixo-agent', rp))
-          await sshExec(conn, sudoCmd('systemctl start runixo-agent', rp))
-          sendLog(win, '✓ 服务已启动', 'success')
-
-          // ===== 等待就绪 =====
-          sendLog(win, '等待 Agent 就绪...')
-          let ready = false
-          for (let i = 0; i < 5; i++) {
-            await new Promise(r => setTimeout(r, 2000))
-            const status = await sshExec(conn, sudoCmd('systemctl is-active runixo-agent', rp))
-            if (status.stdout === 'active') { ready = true; break }
-          }
-          if (!ready) {
-            const logs = await sshExec(conn, sudoCmd('journalctl -u runixo-agent --no-pager -n 10', rp))
-            sendLog(win, `⚠ Agent 可能未正常启动:\n${logs.stdout}`, 'error')
+          
+          sendLog(win, '✓ 令牌已获取', 'success')
+          
+          if (certificate) {
+            sendLog(win, '✓ 证书已获取', 'success')
           } else {
-            sendLog(win, '✓ Agent 已就绪！', 'success')
+            sendLog(win, '⚠ 未获取到证书，可能需要手动导入', 'error')
           }
+
+          const port = 9527
 
           conn.end()
-          resolve({ success: ready, port, token, error: ready ? undefined : 'Agent 启动超时' })
+          resolve({ success: true, port, token, certificate, error: undefined })
         } catch (e: any) {
           sendLog(win, `❌ 安装出错: ${e.message}`, 'error')
           conn.end()
-          resolve({ success: false, port: 0, token: '', error: e.message })
+          resolve({ success: false, port: 0, token: '', certificate: '', error: e.message })
         }
       })
 

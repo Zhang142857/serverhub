@@ -299,6 +299,18 @@ show_result() {
     local token=$1
     local pub_ip=$(get_public_ip)
     local lan_ip=$(get_local_ip)
+    
+    # 等待证书生成
+    local cert_file="${DATA_DIR}/tls/cert.pem"
+    local i=0
+    while [ $i -lt 10 ]; do
+        if [ -f "$cert_file" ]; then
+            break
+        fi
+        sleep 1
+        i=$((i+1))
+    done
+    
     echo ""
     echo -e "${BOLD}╔═══════════════════════════════════════════════════════════╗${NC}"
     echo -e "${BOLD}║          ${GREEN}✓ Runixo Agent 安装成功${NC}${BOLD}                        ║${NC}"
@@ -313,6 +325,13 @@ show_result() {
     echo -e "${BOLD}║${NC}  管理命令: ${CYAN}sudo runixo info${NC}                                ${BOLD}║${NC}"
     echo -e "${BOLD}╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
+    
+    # 输出证书内容（供客户端解析）
+    if [ -f "$cert_file" ]; then
+        echo "-----BEGIN RUNIXO CERTIFICATE-----"
+        cat "$cert_file"
+        echo "-----END RUNIXO CERTIFICATE-----"
+    fi
 }
 
 main() {

@@ -193,6 +193,9 @@ func run() error {
 			log.Info().Str("cert", certFile).Str("key", keyFile).Msg("自签名证书已生成")
 		}
 
+		// 设置环境变量供 DownloadCertificate 使用
+		os.Setenv("TLS_CERT_FILE", certFile)
+
 		creds, err := credentials.NewServerTLSFromFile(certFile, keyFile)
 		if err != nil {
 			return fmt.Errorf("加载TLS证书失败: %w", err)
