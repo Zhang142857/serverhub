@@ -314,7 +314,7 @@ watch(showAddServer, (val) => {
     sshStep.value = 'form'
     sshInstalling.value = false
     sshLogs.value = []
-    sshForm.value = { name: '', host: '', sshPort: 22, username: 'root', authType: 'password', password: '', keyPath: '' }
+    sshForm.value = { name: '', host: '', sshPort: 22, username: 'root', authType: 'password', password: '', keyPath: '', rootPassword: '' }
   }
 })
 
@@ -489,7 +489,8 @@ async function startSshInstall() {
   try {
     const result = await window.electronAPI.ssh.installAgent({
       host: f.host, sshPort: f.sshPort, username: f.username,
-      authType: f.authType, password: f.password, keyPath: f.keyPath
+      authType: f.authType, password: f.password, keyPath: f.keyPath,
+      rootPassword: f.rootPassword || undefined
     })
 
     if (result.success) {

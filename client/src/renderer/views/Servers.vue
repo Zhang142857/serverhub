@@ -197,6 +197,11 @@
             <el-option v-for="g in groups" :key="g" :label="g" :value="g" />
           </el-select>
         </el-form-item>
+        <el-divider content-position="left">高级选项</el-divider>
+        <el-form-item label="sudo 密码">
+          <el-input v-model="sshForm.rootPassword" type="password" show-password placeholder="非 root 用户需要填写（可选）" />
+          <div style="font-size: 12px; color: var(--el-text-color-secondary); margin-top: 4px;">部分服务器需要 sudo 密码才能获取 root 权限</div>
+        </el-form-item>
       </el-form>
       <div v-else class="ssh-progress">
         <div class="ssh-log" ref="sshLogRef">
@@ -403,7 +408,8 @@ const sshLogs = ref<{ text: string; type: string }[]>([])
 const sshLogRef = ref<HTMLElement>()
 const sshForm = ref({
   name: '', host: '', sshPort: 22, username: 'root',
-  authType: 'password' as 'password' | 'key', password: '', keyPath: '', group: '默认'
+  authType: 'password' as 'password' | 'key', password: '', keyPath: '', group: '默认',
+  rootPassword: ''
 })
 const selectedServers = ref<string[]>([])
 const batchCommand = ref('')
@@ -525,7 +531,8 @@ async function startSshInstall() {
   try {
     const result = await window.electronAPI.ssh.installAgent({
       host: f.host, sshPort: f.sshPort, username: f.username,
-      authType: f.authType, password: f.password, keyPath: f.keyPath
+      authType: f.authType, password: f.password, keyPath: f.keyPath,
+      rootPassword: f.rootPassword || undefined
     })
 
     if (result.success) {

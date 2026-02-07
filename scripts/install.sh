@@ -663,6 +663,35 @@ show_connection_info() {
     echo ""
 }
 
+# 清理所有旧版本 Agent（serverhub-agent + runixo-agent）
+cleanup_old_agents() {
+    log_step "清理旧版本 Agent..."
+
+    for svc in runixo-agent serverhub-agent; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            log_info "停止 ${svc} 服务..."
+            systemctl stop "$svc" 2>/dev/null || true
+        fi
+        systemctl disable "$svc" 2>/dev/null || true
+    done
+
+    # 杀掉所有残留进程
+    pkill -9 -f runixo-agent 2>/dev/null || true
+    pkill -9 -f serverhub-agent 2>/dev/null || true
+
+    # 删除旧文件
+    rm -f /usr/local/bin/serverhub-agent /usr/local/bin/serverhub
+    rm -f /etc/systemd/system/serverhub-agent.service
+    rm -rf /etc/serverhub
+
+    # 删除当前版本（将被覆盖安装）
+    rm -f /usr/local/bin/runixo-agent /usr/local/bin/runixo
+    rm -f /etc/systemd/system/runixo-agent.service
+
+    systemctl daemon-reload 2>/dev/null || true
+    log_success "旧版本已清理"
+}
+
 # 停止已有服务
 stop_existing() {
     if systemctl is-active --quiet runixo-agent 2>/dev/null; then
@@ -686,7 +715,7 @@ main() {
     echo ""
     
     check_dependencies
-    stop_existing
+    cleanup_old_agents
     check_and_free_port "$PORT"
     configure_firewall
     
