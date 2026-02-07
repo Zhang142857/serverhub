@@ -399,6 +399,12 @@ export const useAIStore = defineStore('ai', () => {
         }
         break
       }
+      case 'error': {
+        const errMsg = delta.content || '请求失败'
+        parts.push({ type: 'text', content: errMsg })
+        last.content += errMsg
+        break
+      }
     }
   }
 

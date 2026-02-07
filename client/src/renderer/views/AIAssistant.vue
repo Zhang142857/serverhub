@@ -203,7 +203,7 @@ async function processStreamChat(userMessage: string) {
   try {
     await window.electronAPI.ai.streamChat(userMessage, {
       serverId: selectedServer.value || undefined,
-      history: aiStore.messages.slice(-20).map(m => ({ role: m.role, content: m.content }))
+      history: aiStore.messages.slice(0, -2).slice(-20).map(m => ({ role: m.role, content: m.content }))
     })
   } catch (e) {
     const msgs = aiStore.messages

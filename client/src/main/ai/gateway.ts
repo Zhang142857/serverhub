@@ -184,7 +184,7 @@ export class AIGateway extends EventEmitter {
     for (const def of allTools) {
       sdkTools[def.name] = tool({
         description: def.description,
-        parameters: jsonSchema(def.parameters as any),
+        inputSchema: jsonSchema(def.parameters as any),
         execute: async (params: any) => {
           try {
             const result = await def.execute(params, {
@@ -223,6 +223,7 @@ export class AIGateway extends EventEmitter {
     const tools = hasServer ? this.getAISDKTools(context!.serverId!) : undefined
 
     try {
+      console.log('[AIGateway] streamChat:', { provider: this.config.provider, model: this.config.model, baseUrl: this.getBaseUrl(), msgCount: messages.length, hasTools: !!tools })
       const result = streamText({
         model,
         messages,
@@ -263,7 +264,7 @@ export class AIGateway extends EventEmitter {
       onDelta({ type: 'done' })
     } catch (error: any) {
       const msg = error?.message || String(error)
-      console.error(`[AIGateway] streamChat error:`, msg)
+      console.error(`[AIGateway] streamChat error:`, msg, error?.cause || '')
       onDelta({ type: 'error', content: `请求失败: ${msg}` })
       onDelta({ type: 'done' })
     }
