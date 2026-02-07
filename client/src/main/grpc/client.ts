@@ -1,5 +1,6 @@
 import * as grpc from '@grpc/grpc-js'
 import * as protoLoader from '@grpc/proto-loader'
+import * as tls from 'tls'
 import { join } from 'path'
 import { EventEmitter } from 'events'
 import { app } from 'electron'
@@ -59,6 +60,29 @@ export class GrpcClient extends EventEmitter {
     this.metadata.set('authorization', `Bearer ${config.token}`)
   }
 
+  // 通过 TLS 握手获取服务器自签名证书（Trust On First Use）
+  private fetchServerCert(): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const socket = tls.connect(
+        { host: this.config.host, port: this.config.port, rejectUnauthorized: false },
+        () => {
+          const cert = socket.getPeerCertificate(true)
+          if (cert && cert.raw) {
+            const b64 = cert.raw.toString('base64')
+            const pem = `-----BEGIN CERTIFICATE-----\n${b64.match(/.{1,64}/g)!.join('\n')}\n-----END CERTIFICATE-----\n`
+            resolve(Buffer.from(pem))
+          } else {
+            reject(new Error('无法获取服务器证书'))
+          }
+          socket.destroy()
+        }
+      )
+      socket.setTimeout(5000)
+      socket.on('timeout', () => { socket.destroy(); reject(new Error('获取证书超时')) })
+      socket.on('error', (err) => reject(err))
+    })
+  }
+
   async connect(): Promise<void> {
     const PROTO_PATH = getProtoPath()
     const packageDefinition = await protoLoader.load(PROTO_PATH, {
@@ -73,7 +97,9 @@ export class GrpcClient extends EventEmitter {
 
     let credentials: grpc.ChannelCredentials
     if (this.config.useTls) {
-      credentials = grpc.credentials.createSsl()
+      // 先通过 TLS 握手获取服务器自签名证书，再用它作为信任根
+      const rootCert = await this.fetchServerCert()
+      credentials = grpc.credentials.createSsl(rootCert)
     } else {
       credentials = grpc.credentials.createInsecure()
     }

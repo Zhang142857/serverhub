@@ -1,6 +1,3 @@
-// 允许 gRPC 连接自签名证书的 Agent 服务器
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
-
 import { app, BrowserWindow, shell, session } from 'electron'
 import { join } from 'path'
 import { setupIpcHandlers } from './ipc/handlers'
