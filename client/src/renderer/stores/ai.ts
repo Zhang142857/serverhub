@@ -358,7 +358,7 @@ export const useAIStore = defineStore('ai', () => {
 
   // 追加流式内容到最后一条消息
   function appendToLastMessage(delta: { type: string; content?: string; toolName?: string; args?: any; result?: any }): void {
-    console.log('[AI Store] appendToLastMessage:', delta)
+    console.log('[AI Store] appendToLastMessage:', JSON.stringify(delta, null, 2))
     if (!currentConversation.value) return
     const msgs = currentConversation.value.messages
     const last = msgs[msgs.length - 1]
@@ -370,7 +370,7 @@ export const useAIStore = defineStore('ai', () => {
 
     switch (delta.type) {
       case 'content': {
-        console.log('[AI Store] content delta, lastPart:', lastPart?.type)
+        console.log('[AI Store] content delta, lastPart:', lastPart?.type, 'content:', delta.content)
         if (lastPart?.type === 'text') {
           lastPart.content = (lastPart.content || '') + (delta.content || '')
         } else {
