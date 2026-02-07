@@ -139,6 +139,7 @@ class ThinkTagParser {
 
   parse(text: string, onDelta: StreamOptions['onDelta']): void {
     this.buffer += text
+    console.log('[ThinkTagParser] parse:', { text, inThink: this.inThink, bufferLen: this.buffer.length })
     while (this.buffer.length > 0) {
       if (!this.inThink) {
         // 检查多种思考开始标签
@@ -147,16 +148,23 @@ class ThinkTagParser {
           // 可能标签还没收完，保留末尾 <... 部分
           const partial = this.buffer.lastIndexOf('<')
           if (partial >= 0 && partial > this.buffer.length - 12) {
-            if (partial > 0) onDelta({ type: 'content', content: this.buffer.slice(0, partial) })
+            if (partial > 0) {
+              console.log('[ThinkTagParser] emit content (partial):', this.buffer.slice(0, partial))
+              onDelta({ type: 'content', content: this.buffer.slice(0, partial) })
+            }
             this.buffer = this.buffer.slice(partial)
           } else {
+            console.log('[ThinkTagParser] emit content (full):', this.buffer)
             onDelta({ type: 'content', content: this.buffer })
             this.buffer = ''
           }
           return
         }
         const idx = match.index!
-        if (idx > 0) onDelta({ type: 'content', content: this.buffer.slice(0, idx) })
+        if (idx > 0) {
+          console.log('[ThinkTagParser] emit content (before tag):', this.buffer.slice(0, idx))
+          onDelta({ type: 'content', content: this.buffer.slice(0, idx) })
+        }
         this.inThink = true
         this.buffer = this.buffer.slice(idx + match[0].length)
       } else {
@@ -286,6 +294,7 @@ async function rawSSEStream(config: ClientConfig, options: StreamOptions): Promi
 
         // content（可能含 <think>/<thinking> 标签）
         if (delta.content) {
+          console.log('[rawSSE] content delta:', delta.content)
           if (hasReasoning) {
             options.onDelta({ type: 'content', content: delta.content })
           } else {
