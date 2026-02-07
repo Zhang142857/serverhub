@@ -90,7 +90,7 @@ func loadConfig(configFile string) error {
 	viper.SetDefault("server.host", "0.0.0.0")
 	viper.SetDefault("server.port", 9527)
 	viper.SetDefault("server.api_port", 9528)
-	viper.SetDefault("server.tls.enabled", true)
+	viper.SetDefault("server.tls.enabled", false)
 	viper.SetDefault("auth.token", "")
 	viper.SetDefault("metrics.interval", 2)
 	viper.SetDefault("log.level", "info")

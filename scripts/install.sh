@@ -181,7 +181,8 @@ server:
   port: ${PORT}
   api_port: ${API_PORT}
   tls:
-    enabled: true
+    enabled: false
+    # 启用后首次启动会自动生成自签名证书
 
 auth:
   token: "${token}"
