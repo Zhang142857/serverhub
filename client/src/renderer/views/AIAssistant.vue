@@ -91,8 +91,9 @@
             </div>
             <div class="toolbar-right">
               <span class="hint">Ctrl+Enter 发送</span>
-              <el-button type="primary" :icon="Promotion" circle size="small"
-                :disabled="!inputMessage.trim() || aiStore.isProcessing" @click="sendMessage" :loading="aiStore.isProcessing" />
+              <el-button v-if="aiStore.isProcessing" type="danger" :icon="Close" circle size="small" @click="stopGeneration" title="停止生成" />
+              <el-button v-else type="primary" :icon="Promotion" circle size="small"
+                :disabled="!inputMessage.trim()" @click="sendMessage" />
             </div>
           </div>
         </div>
@@ -154,7 +155,7 @@ import ChatMessage from '@/components/ai/ChatMessage.vue'
 import {
   Plus, Delete, ChatDotRound, Operation, Promotion, Monitor, Warning,
   Loading, Box, Document, Setting, Cpu, FolderOpened, CircleCheck, CircleClose,
-  Upload, Search, Connection
+  Upload, Search, Connection, Close
 } from '@element-plus/icons-vue'
 
 const serverStore = useServerStore()
@@ -254,7 +255,14 @@ async function processStreamChat(userMessage: string) {
   }
 }
 
-
+function stopGeneration() {
+  window.electronAPI.ai.stopStream()
+  cleanupStreamListener?.()
+  cleanupStreamListener = null
+  aiStore.finalizeStreamingMessage()
+  aiStore.endProcessing()
+  ElMessage.info('已停止生成')
+}
 
 function sendQuickAction(prompt: string) { inputMessage.value = prompt; sendMessage() }
 

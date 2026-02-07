@@ -14,6 +14,7 @@ import { ToolRegistry, toolRegistry, ToolExecutor } from './tools/registry'
 import { systemTools } from './tools/system'
 import { dockerTools } from './tools/docker'
 import { fileTools } from './tools/file'
+import { environmentTools } from './tools/environment'
 import { deploymentTools } from './tools/deployment'
 import { monitoringTools } from './tools/monitoring'
 import { networkTools } from './tools/network'
@@ -74,7 +75,7 @@ export class AIGateway extends EventEmitter {
   }
 
   private registerDefaultTools(): void {
-    for (const tools of [systemTools, dockerTools, fileTools, deploymentTools, monitoringTools, networkTools, backupTools, taskTools]) {
+    for (const tools of [systemTools, dockerTools, fileTools, environmentTools, deploymentTools, monitoringTools, networkTools, backupTools, taskTools]) {
       this.toolRegistry.registerAll(tools)
     }
     console.log(`[AIGateway] Registered ${this.toolRegistry.size} tools`)
