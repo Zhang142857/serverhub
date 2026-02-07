@@ -113,8 +113,8 @@ export function registerSshHandlers() {
           
           sendLog(win, '✓ 安装完成', 'success')
           
-          // 解析输出中的 token 和证书
-          const output = installRes.stdout + '\n' + installRes.stderr
+          // 解析输出中的 token 和证书（移除 ANSI 颜色代码）
+          const output = (installRes.stdout + '\n' + installRes.stderr).replace(/\x1b\[[0-9;]*m/g, '')
           const tokenMatch = output.match(/Token:\s*([a-f0-9]{64})/i)
           const token = tokenMatch ? tokenMatch[1] : ''
           
