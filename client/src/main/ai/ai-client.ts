@@ -7,7 +7,7 @@
  * Google:      AI SDK
  */
 
-import { streamText, stepCountIs } from 'ai'
+import { streamText } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
@@ -207,7 +207,7 @@ async function sdkStream(
     model,
     messages: options.messages as any,
     tools: options.tools,
-    stopWhen: options.tools ? stepCountIs(10) : undefined,
+    maxSteps: 10,  // 允许最多 10 步，但会生成最终文本
   })
 
   const parser = new ThinkTagParser()
