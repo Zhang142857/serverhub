@@ -256,7 +256,10 @@ export class AIGateway extends EventEmitter implements AIProvider {
       mistral: 'https://api.mistral.ai',
       openrouter: 'https://openrouter.ai/api',
     }
-    return this.config.baseUrl || defaults[this.config.provider] || 'https://api.openai.com'
+    let url = this.config.baseUrl || defaults[this.config.provider] || 'https://api.openai.com'
+    // 去掉尾部 /v1、/v1/、/ 防止拼接出 /v1/v1/chat/completions
+    url = url.replace(/\/v1\/?$/, '').replace(/\/+$/, '')
+    return url
   }
 
   /**
@@ -419,24 +422,30 @@ export class AIGateway extends EventEmitter implements AIProvider {
   ): Promise<AIResponse> {
     const url = `${this.getOpenAICompatibleBaseUrl()}/v1/chat/completions`
 
-    const response = await this.httpClient.post(url, {
-      model: this.config.model || 'gpt-4',
-      messages,
-      stream: false,
-      tools: options?.tools,
-      tool_choice: options?.tools?.length ? 'auto' : undefined
-    }, {
-      headers: {
-        'Authorization': `Bearer ${this.config.apiKey}`,
-        'Content-Type': 'application/json'
-      }
-    })
+    try {
+      const response = await this.httpClient.post(url, {
+        model: this.config.model || 'gpt-4',
+        messages,
+        stream: false,
+        tools: options?.tools,
+        tool_choice: options?.tools?.length ? 'auto' : undefined
+      }, {
+        headers: {
+          'Authorization': `Bearer ${this.config.apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      })
 
-    const assistantMessage = response.data.choices?.[0]?.message
-    return {
-      content: assistantMessage?.content || '',
-      toolCalls: assistantMessage?.tool_calls,
-      finishReason: response.data.choices?.[0]?.finish_reason
+      const assistantMessage = response.data.choices?.[0]?.message
+      return {
+        content: assistantMessage?.content || '',
+        toolCalls: assistantMessage?.tool_calls,
+        finishReason: response.data.choices?.[0]?.finish_reason
+      }
+    } catch (err: any) {
+      const status = err.response?.status
+      const detail = err.response?.data?.error?.message || err.message
+      throw new Error(`AI 请求失败 [${this.config.provider}] ${url} → ${status}: ${detail}`)
     }
   }
 
@@ -608,18 +617,25 @@ export class AIGateway extends EventEmitter implements AIProvider {
     let toolCallCount = 0
 
     while (toolCallCount < this.maxToolCalls) {
-      const response = await this.httpClient.post(url, {
-        model: this.config.model || 'gpt-4',
-        messages: currentMessages,
-        stream: false,
-        tools: tools,
-        tool_choice: tools?.length ? 'auto' : undefined
-      }, {
-        headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      let response: any
+      try {
+        response = await this.httpClient.post(url, {
+          model: this.config.model || 'gpt-4',
+          messages: currentMessages,
+          stream: false,
+          tools: tools,
+          tool_choice: tools?.length ? 'auto' : undefined
+        }, {
+          headers: {
+            'Authorization': `Bearer ${this.config.apiKey}`,
+            'Content-Type': 'application/json'
+          }
+        })
+      } catch (err: any) {
+        const status = err.response?.status
+        const detail = err.response?.data?.error?.message || err.message
+        throw new Error(`AI 请求失败 [${this.config.provider}] ${url} → ${status}: ${detail}`)
+      }
 
       const assistantMessage = response.data.choices?.[0]?.message
       if (!assistantMessage) {
