@@ -19,6 +19,9 @@ import { monitoringTools } from './tools/monitoring'
 import { networkTools } from './tools/network'
 import { backupTools } from './tools/backup'
 import { taskTools } from './tools/task'
+import { cronTools } from './tools/cron'
+import { userTools } from './tools/user'
+import { agentManager } from './agents'
 
 export type CommandPolicy = 'auto-all' | 'auto-safe' | 'auto-file' | 'manual-all'
 
@@ -39,6 +42,7 @@ export interface AIContext {
   history?: ChatMessage[]
   systemPrompt?: string
   agentMode?: boolean
+  agentId?: string
 }
 
 export type { StreamDelta }
@@ -78,7 +82,7 @@ export class AIGateway extends EventEmitter {
   }
 
   private registerDefaultTools(): void {
-    for (const tools of [systemTools, dockerTools, fileTools, environmentTools, deploymentTools, monitoringTools, networkTools, backupTools, taskTools]) {
+    for (const tools of [systemTools, dockerTools, fileTools, environmentTools, deploymentTools, monitoringTools, networkTools, backupTools, taskTools, cronTools, userTools]) {
       this.toolRegistry.registerAll(tools)
     }
     console.log(`[AIGateway] Registered ${this.toolRegistry.size} tools`)
@@ -196,8 +200,12 @@ export class AIGateway extends EventEmitter {
     context: AIContext | undefined,
     onDelta: (delta: StreamDelta) => void
   ): Promise<void> {
+    // Agent 支持：使用 Agent 的 prompt 和工具子集
+    const agent = context?.agentId ? agentManager.get(context.agentId) : undefined
+    const prompt = context?.systemPrompt || agent?.systemPrompt || this.systemPrompt
+
     const messages = [
-      { role: 'system', content: context?.systemPrompt || this.systemPrompt },
+      { role: 'system', content: prompt },
       ...(context?.history || []).map(m => ({ role: m.role, content: m.content })),
       { role: 'user', content: message }
     ]
@@ -210,7 +218,11 @@ export class AIGateway extends EventEmitter {
     }
 
     const hasServer = !!(context?.serverId && this.toolExecutor)
-    const tools = hasServer ? this.getToolDefs() : undefined
+    let tools = hasServer ? this.getToolDefs() : undefined
+    // Agent 工具子集过滤
+    if (tools && agent?.tools?.length) {
+      tools = tools.filter(t => agent.tools.includes(t.name))
+    }
     const executeTool = hasServer ? this.createToolExecutor(context!.serverId!, onDelta) : undefined
 
     console.log('[AIGateway] streamChat:', {

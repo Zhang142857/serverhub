@@ -140,15 +140,24 @@ function copyContent() {
 
 <style lang="scss" scoped>
 .chat-message {
-  display: flex; gap: 14px; padding: 20px 24px; transition: background-color 0.15s;
+  display: flex; gap: 14px; padding: 20px 24px;
+  transition: background-color 0.2s ease;
+  animation: messageSlideIn 0.3s ease-out;
   &:hover { background-color: rgba(255,255,255,0.02); }
   &:hover .message-actions { opacity: 1; }
+  &.streaming { .message-body { position: relative; } }
+}
+
+@keyframes messageSlideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .avatar {
-  width: 32px; height: 32px; border-radius: 10px;
+  width: 34px; height: 34px; border-radius: 10px;
   display: flex; align-items: center; justify-content: center;
   font-size: 16px; flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
 .user-avatar { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; }
 .ai-avatar { background: linear-gradient(135deg, #10b981, #06b6d4); color: #fff; }
@@ -165,58 +174,101 @@ function copyContent() {
 .thinking-block {
   margin: 8px 0; border-radius: 10px; overflow: hidden;
   border: 1px solid rgba(245, 158, 11, 0.2);
-  background: rgba(245, 158, 11, 0.05);
+  background: rgba(245, 158, 11, 0.04);
+  transition: all 0.3s ease;
 
   .thinking-header {
     display: flex; align-items: center; gap: 8px;
-    padding: 8px 12px; cursor: pointer; font-size: 12px;
+    padding: 10px 14px; cursor: pointer; font-size: 12px;
     color: #f59e0b; user-select: none;
+    transition: background 0.15s;
     &:hover { background: rgba(245, 158, 11, 0.08); }
+  }
+  .thinking-icon {
+    animation: none;
+    .streaming & { animation: thinkPulse 1.5s ease-in-out infinite; }
   }
   .thinking-toggle { margin-left: auto; font-size: 11px; opacity: 0.7; }
   .thinking-content {
-    padding: 0 12px 10px; font-size: 13px; line-height: 1.7;
-    color: var(--text-secondary); white-space: pre-wrap; word-break: break-word;
+    padding: 0 14px 12px; font-size: 13px; line-height: 1.7;
+    color: rgba(245, 158, 11, 0.7); white-space: pre-wrap; word-break: break-word;
     max-height: 300px; overflow-y: auto;
+    animation: thinkExpand 0.25s ease-out;
   }
   &.collapsed .thinking-content { display: none; }
+}
+
+@keyframes thinkPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+@keyframes thinkExpand {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 300px; }
 }
 
 // 内联工具调用
 .inline-tool-call {
   margin: 10px 0; border-radius: 10px; overflow: hidden;
   border: 1px solid var(--border-color); background: var(--bg-secondary);
+  transition: all 0.3s ease;
+  animation: toolSlideIn 0.25s ease-out;
 
-  &.calling { border-color: rgba(99, 102, 241, 0.3); }
-  &.done { border-color: rgba(16, 185, 129, 0.3); }
-  &.error { border-color: rgba(239, 68, 68, 0.3); }
+  &.calling {
+    border-color: rgba(99, 102, 241, 0.4);
+    background: rgba(99, 102, 241, 0.04);
+    box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.1);
+  }
+  &.done {
+    border-color: rgba(16, 185, 129, 0.3);
+    background: rgba(16, 185, 129, 0.03);
+  }
+  &.error {
+    border-color: rgba(239, 68, 68, 0.3);
+    background: rgba(239, 68, 68, 0.03);
+  }
 
   .tool-header {
     display: flex; align-items: center; gap: 8px;
-    padding: 8px 12px; cursor: pointer; font-size: 13px;
+    padding: 10px 14px; cursor: pointer; font-size: 13px;
+    transition: background 0.15s;
     &:hover { background: rgba(255,255,255,0.03); }
   }
   .tool-icon {
-    font-size: 14px;
-    .calling & { color: #6366f1; }
+    font-size: 14px; transition: color 0.3s;
+    .calling & { color: #6366f1; animation: toolSpin 1s linear infinite; }
     .done & { color: #10b981; }
     .error & { color: #ef4444; }
   }
   .tool-name { font-weight: 500; color: var(--text-color); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
   .tool-status { margin-left: auto; font-size: 11px; color: var(--text-muted); }
-  .expand-icon { font-size: 12px; color: var(--text-muted); }
+  .expand-icon { font-size: 12px; color: var(--text-muted); transition: transform 0.2s; }
 
   .tool-detail {
-    border-top: 1px solid var(--border-color); padding: 10px 12px;
+    border-top: 1px solid var(--border-color); padding: 10px 14px;
+    animation: toolDetailExpand 0.2s ease-out;
     .tool-section { margin-bottom: 8px; &:last-child { margin-bottom: 0; } }
-    .section-label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; }
+    .section-label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
     pre {
-      margin: 0; padding: 8px; border-radius: 6px; background: var(--bg-tertiary);
+      margin: 0; padding: 10px; border-radius: 8px; background: rgba(0,0,0,0.2);
       font-size: 12px; line-height: 1.5; overflow-x: auto; white-space: pre-wrap; word-break: break-all;
       font-family: 'JetBrains Mono', monospace; color: var(--text-secondary);
       max-height: 200px; overflow-y: auto;
     }
   }
+}
+
+@keyframes toolSlideIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes toolSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes toolDetailExpand {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 // 消息正文
@@ -232,13 +284,14 @@ function copyContent() {
     .copy-btn {
       background: none; border: 1px solid var(--border-color); border-radius: 4px;
       padding: 2px 8px; font-size: 11px; color: var(--text-secondary); cursor: pointer;
+      transition: all 0.15s;
       &:hover { color: var(--text-color); border-color: var(--text-muted); }
     }
-    pre { margin: 0; padding: 14px; background: var(--bg-tertiary); overflow-x: auto; }
+    pre { margin: 0; padding: 14px; background: rgba(0,0,0,0.2); overflow-x: auto; }
     code { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; background: none; padding: 0; }
   }
   :deep(code) {
-    background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px;
+    background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px;
     font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px;
   }
   :deep(h2), :deep(h3), :deep(h4) { margin: 14px 0 8px; font-weight: 600; }
@@ -247,11 +300,17 @@ function copyContent() {
   :deep(strong) { font-weight: 600; color: var(--text-color); }
 }
 
-.streaming-cursor { color: var(--primary-color); animation: blink 1s infinite; }
-@keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+.streaming-cursor {
+  display: inline-block; color: #10b981; font-weight: bold;
+  animation: cursorBlink 0.8s ease-in-out infinite;
+}
+@keyframes cursorBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
 
 .message-actions {
-  display: flex; gap: 4px; margin-top: 8px; opacity: 0; transition: opacity 0.15s;
+  display: flex; gap: 4px; margin-top: 8px; opacity: 0; transition: opacity 0.2s;
   .el-button { color: var(--text-muted); &:hover { color: var(--primary-color); } }
 }
 </style>

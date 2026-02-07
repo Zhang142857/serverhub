@@ -1,6 +1,8 @@
 import { ipcMain, dialog, shell, net } from 'electron'
 import { GrpcClient } from '../grpc/client'
 import { AIGateway, AIContext } from '../ai/gateway'
+import { mcpClient } from '../ai/mcp-client'
+import { agentManager } from '../ai/agents'
 import * as secureStorage from '../security/secureStorage'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -657,6 +659,24 @@ export function setupIpcHandlers() {
     aiGateway.confirmTool(confirmId, approved)
     return true
   })
+
+  // ==================== MCP ====================
+  ipcMain.handle('mcp:getServers', async () => mcpClient.getConfigs())
+  ipcMain.handle('mcp:getStatus', async () => mcpClient.getStatus())
+  ipcMain.handle('mcp:addServer', async (_, config: any) => { mcpClient.addServer(config); return true })
+  ipcMain.handle('mcp:removeServer', async (_, name: string) => { mcpClient.removeServer(name); return true })
+  ipcMain.handle('mcp:startServer', async (_, name: string) => {
+    const configs = mcpClient.getConfigs()
+    const config = configs.find(c => c.name === name)
+    if (config) await mcpClient.startServer(config)
+    return true
+  })
+  ipcMain.handle('mcp:stopServer', async (_, name: string) => { mcpClient.stopServer(name); return true })
+  ipcMain.handle('mcp:startAll', async () => { await mcpClient.startAll(); return true })
+
+  // ==================== Agent ====================
+  ipcMain.handle('agent:list', async () => agentManager.getAll())
+  ipcMain.handle('agent:get', async (_, id: string) => agentManager.get(id))
 
   // ==================== 系统对话框 ====================
   ipcMain.handle('dialog:openFile', async (_, options: any) => {

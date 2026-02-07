@@ -32,10 +32,14 @@
     <div class="chat-panel">
       <div class="chat-header">
         <div class="header-left">
-          <div class="ai-badge">AI</div>
-          <span class="title">Runixo 助手</span>
+          <div class="ai-badge">{{ currentAgent?.icon || 'AI' }}</div>
+          <span class="title">{{ currentAgent?.name || 'Runixo 助手' }}</span>
         </div>
         <div class="header-right">
+          <!-- Agent 选择器 -->
+          <el-select v-model="selectedAgentId" placeholder="选择智能体" size="small" style="width: 130px">
+            <el-option v-for="agent in agents" :key="agent.id" :label="`${agent.icon} ${agent.name}`" :value="agent.id" />
+          </el-select>
           <el-select v-model="selectedServer" placeholder="选择服务器" size="small" clearable style="width: 150px">
             <el-option v-for="server in connectedServers" :key="server.id" :label="server.name" :value="server.id" />
           </el-select>
@@ -164,10 +168,16 @@ const inputMessage = ref('')
 const messagesRef = ref<HTMLElement | null>(null)
 const showDebugDialog = ref(false)
 const commandPolicy = ref('auto-safe')
+const selectedAgentId = ref('general')
+const agents = ref<Array<{ id: string; name: string; icon: string; description: string }>>([])
 let cleanupStreamListener: (() => void) | null = null
 
 const connectedServers = computed(() => serverStore.connectedServers)
-const inputPlaceholder = computed(() => selectedServer.value ? '输入任务，AI 将自动执行...' : '输入消息...')
+const currentAgent = computed(() => agents.value.find(a => a.id === selectedAgentId.value))
+const inputPlaceholder = computed(() => {
+  const agentHint = currentAgent.value ? `[${currentAgent.value.name}] ` : ''
+  return selectedServer.value ? `${agentHint}输入任务，AI 将自动执行...` : `${agentHint}输入消息...`
+})
 
 const categoryNames: Record<string, string> = { system: '系统', docker: 'Docker', file: '文件', network: '网络', database: '数据库', plugin: '插件', deployment: '部署', monitoring: '监控诊断' }
 
@@ -203,6 +213,7 @@ async function onPolicyChange(val: string) {
 
 onMounted(async () => {
   commandPolicy.value = await window.electronAPI.ai.getCommandPolicy()
+  try { agents.value = await window.electronAPI.agent.list() } catch {}
 })
 
 function createNewConversation() { aiStore.createConversation(true, selectedServer.value || undefined) }
@@ -230,7 +241,8 @@ async function processStreamChat(userMessage: string) {
   try {
     await window.electronAPI.ai.streamChat(userMessage, {
       serverId: selectedServer.value || undefined,
-      history: aiStore.messages.slice(0, -2).slice(-20).map(m => ({ role: m.role, content: m.content }))
+      history: aiStore.messages.slice(0, -2).slice(-20).map(m => ({ role: m.role, content: m.content })),
+      agentId: selectedAgentId.value || undefined
     })
   } catch (e) {
     const msgs = aiStore.messages
@@ -389,8 +401,11 @@ onUnmounted(() => { cleanupStreamListener?.() })
     max-width: 800px; margin: 0 auto;
     border: 1px solid var(--border-color); border-radius: 14px;
     background-color: var(--bg-secondary);
-    overflow: hidden; transition: border-color 0.2s;
-    &:focus-within { border-color: var(--primary-color); }
+    overflow: hidden; transition: border-color 0.3s, box-shadow 0.3s;
+    &:focus-within {
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.1);
+    }
 
     :deep(.el-textarea__inner) {
       background: transparent !important; border: none !important;
@@ -412,7 +427,17 @@ onUnmounted(() => { cleanupStreamListener?.() })
       &.warn { color: var(--warning-color); background: rgba(245, 158, 11, 0.1); }
     }
     .hint { font-size: 11px; color: var(--text-muted); }
+
+    // 停止按钮动画
+    :deep(.el-button--danger.is-circle) {
+      animation: stopBtnPulse 1.5s ease-in-out infinite;
+    }
   }
+}
+
+@keyframes stopBtnPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
 }
 
 // ===== 右侧工具面板 =====

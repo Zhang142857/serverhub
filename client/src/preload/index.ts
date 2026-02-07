@@ -234,6 +234,23 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('ai:stopStream'),
   },
 
+  // MCP
+  mcp: {
+    getServers: (): Promise<any[]> => ipcRenderer.invoke('mcp:getServers'),
+    getStatus: (): Promise<any[]> => ipcRenderer.invoke('mcp:getStatus'),
+    addServer: (config: any): Promise<boolean> => ipcRenderer.invoke('mcp:addServer', config),
+    removeServer: (name: string): Promise<boolean> => ipcRenderer.invoke('mcp:removeServer', name),
+    startServer: (name: string): Promise<boolean> => ipcRenderer.invoke('mcp:startServer', name),
+    stopServer: (name: string): Promise<boolean> => ipcRenderer.invoke('mcp:stopServer', name),
+    startAll: (): Promise<boolean> => ipcRenderer.invoke('mcp:startAll'),
+  },
+
+  // Agent
+  agent: {
+    list: (): Promise<any[]> => ipcRenderer.invoke('agent:list'),
+    get: (id: string): Promise<any> => ipcRenderer.invoke('agent:get', id),
+  },
+
   // 系统对话框
   dialog: {
     openFile: (options: OpenDialogOptions): Promise<OpenDialogResult> =>

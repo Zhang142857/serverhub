@@ -20,7 +20,7 @@ export interface ToolDefinition {
   name: string
   displayName: string
   description: string
-  category: 'system' | 'docker' | 'file' | 'network' | 'database' | 'plugin' | 'deployment' | 'monitoring'
+  category: 'system' | 'docker' | 'file' | 'network' | 'database' | 'plugin' | 'deployment' | 'monitoring' | 'environment' | 'security' | 'cron' | 'user'
   dangerous?: boolean  // 危险操作标记，执行前需用户确认
   parameters: {
     type: 'object'
