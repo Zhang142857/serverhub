@@ -18,7 +18,7 @@ import { ReActEngine, createReActEngine, ReActStep, TaskPlan, AIProvider, AIResp
 
 // AI 配置
 export interface AIConfig {
-  provider: 'openai' | 'claude' | 'ollama' | 'custom'
+  provider: 'openai' | 'claude' | 'ollama' | 'deepseek' | 'gemini' | 'groq' | 'mistral' | 'openrouter' | 'custom'
   apiKey?: string
   baseUrl?: string
   model?: string
@@ -195,7 +195,12 @@ export class AIGateway extends EventEmitter implements AIProvider {
       { id: 'ollama', name: 'Ollama', description: '本地运行的开源大语言模型' },
       { id: 'openai', name: 'OpenAI', description: 'GPT-4 等 OpenAI 模型' },
       { id: 'claude', name: 'Claude', description: 'Anthropic Claude 模型' },
-      { id: 'custom', name: '自定义', description: '自定义 API 端点' }
+      { id: 'deepseek', name: 'DeepSeek', description: 'DeepSeek 深度求索模型' },
+      { id: 'gemini', name: 'Google Gemini', description: 'Google Gemini 模型' },
+      { id: 'groq', name: 'Groq', description: 'Groq 超快推理引擎' },
+      { id: 'mistral', name: 'Mistral AI', description: 'Mistral 开源模型' },
+      { id: 'openrouter', name: 'OpenRouter', description: '统一 API 访问多种模型' },
+      { id: 'custom', name: '自定义', description: '自定义 OpenAI 兼容 API 端点' }
     ]
   }
 
@@ -226,6 +231,27 @@ export class AIGateway extends EventEmitter implements AIProvider {
   }
 
   /**
+   * 获取 OpenAI 兼容供应商的 Base URL
+   */
+  private getOpenAICompatibleBaseUrl(): string {
+    const defaults: Record<string, string> = {
+      openai: 'https://api.openai.com',
+      deepseek: 'https://api.deepseek.com',
+      groq: 'https://api.groq.com/openai',
+      mistral: 'https://api.mistral.ai',
+      openrouter: 'https://openrouter.ai/api',
+    }
+    return this.config.baseUrl || defaults[this.config.provider] || 'https://api.openai.com'
+  }
+
+  /**
+   * 是否为 OpenAI 兼容供应商
+   */
+  private isOpenAICompatible(): boolean {
+    return ['openai', 'deepseek', 'groq', 'mistral', 'openrouter', 'custom'].includes(this.config.provider)
+  }
+
+  /**
    * 普通聊天（非 Agent 模式）
    */
   async chat(
@@ -246,15 +272,16 @@ export class AIGateway extends EventEmitter implements AIProvider {
       { role: 'user', content: message }
     ]
 
-    switch (this.config.provider) {
-      case 'ollama':
-        return this.chatWithOllama(messages, context, onStream)
-      case 'openai':
-        return this.chatWithOpenAI(messages, context, onStream)
-      case 'claude':
-        return this.chatWithClaude(messages, context, onStream)
-      default:
-        throw new Error(`Unsupported provider: ${this.config.provider}`)
+    if (this.config.provider === 'ollama') {
+      return this.chatWithOllama(messages, context, onStream)
+    } else if (this.config.provider === 'claude') {
+      return this.chatWithClaude(messages, context, onStream)
+    } else if (this.config.provider === 'gemini') {
+      return this.chatWithGemini(messages, context, onStream)
+    } else if (this.isOpenAICompatible()) {
+      return this.chatWithOpenAI(messages, context, onStream)
+    } else {
+      throw new Error(`Unsupported provider: ${this.config.provider}`)
     }
   }
 
@@ -278,9 +305,16 @@ export class AIGateway extends EventEmitter implements AIProvider {
 
     switch (this.config.provider) {
       case 'openai':
+      case 'deepseek':
+      case 'groq':
+      case 'mistral':
+      case 'openrouter':
+      case 'custom':
         return this.chatWithOpenAITools(chatMessages, options)
       case 'claude':
         return this.chatWithClaudeTools(chatMessages, options)
+      case 'gemini':
+        return this.chatWithGeminiTools(chatMessages, options)
       case 'ollama':
         return this.chatWithOllamaTools(chatMessages, options)
       default:
@@ -368,7 +402,7 @@ export class AIGateway extends EventEmitter implements AIProvider {
       stream?: boolean
     }
   ): Promise<AIResponse> {
-    const url = `${this.config.baseUrl || 'https://api.openai.com'}/v1/chat/completions`
+    const url = `${this.getOpenAICompatibleBaseUrl()}/v1/chat/completions`
 
     const response = await this.httpClient.post(url, {
       model: this.config.model || 'gpt-4',
@@ -552,7 +586,7 @@ export class AIGateway extends EventEmitter implements AIProvider {
     context?: AIContext,
     onStream?: (chunk: string) => void
   ): Promise<string> {
-    const url = `${this.config.baseUrl || 'https://api.openai.com'}/v1/chat/completions`
+    const url = `${this.getOpenAICompatibleBaseUrl()}/v1/chat/completions`
     const tools = context?.agentMode ? this.toolRegistry.getToolDefinitions() : undefined
 
     let currentMessages = [...messages]
@@ -688,6 +722,87 @@ export class AIGateway extends EventEmitter implements AIProvider {
       })
     } else {
       return response.data.content?.[0]?.text || ''
+    }
+  }
+
+  /**
+   * Gemini 聊天
+   */
+  private async chatWithGemini(
+    messages: ChatMessage[],
+    _context?: AIContext,
+    onStream?: (chunk: string) => void
+  ): Promise<string> {
+    const model = this.config.model || 'gemini-2.0-flash'
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.config.apiKey}`
+
+    const systemMsg = messages.find(m => m.role === 'system')
+    const contents = messages.filter(m => m.role !== 'system').map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    }))
+
+    const response = await this.httpClient.post(url, {
+      ...(systemMsg ? { systemInstruction: { parts: [{ text: systemMsg.content }] } } : {}),
+      contents
+    })
+
+    const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    if (onStream) onStream(text)
+    return text
+  }
+
+  /**
+   * Gemini 带工具调用
+   */
+  private async chatWithGeminiTools(
+    messages: ChatMessage[],
+    options?: {
+      tools?: Array<{
+        type: 'function'
+        function: { name: string; description: string; parameters: Record<string, unknown> }
+      }>
+      stream?: boolean
+    }
+  ): Promise<AIResponse> {
+    const model = this.config.model || 'gemini-2.0-flash'
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.config.apiKey}`
+
+    const systemMsg = messages.find(m => m.role === 'system')
+    const contents = messages.filter(m => m.role !== 'system').map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    }))
+
+    const tools = options?.tools?.length ? [{
+      functionDeclarations: options.tools.map(t => ({
+        name: t.function.name,
+        description: t.function.description,
+        parameters: t.function.parameters
+      }))
+    }] : undefined
+
+    const response = await this.httpClient.post(url, {
+      ...(systemMsg ? { systemInstruction: { parts: [{ text: systemMsg.content }] } } : {}),
+      contents,
+      tools
+    })
+
+    const candidate = response.data.candidates?.[0]
+    const parts = candidate?.content?.parts || []
+    const textPart = parts.find((p: any) => p.text)
+    const fnParts = parts.filter((p: any) => p.functionCall)
+
+    const toolCalls = fnParts.map((p: any, i: number) => ({
+      id: `call_${i}`,
+      type: 'function' as const,
+      function: { name: p.functionCall.name, arguments: JSON.stringify(p.functionCall.args) }
+    }))
+
+    return {
+      content: textPart?.text || '',
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      finishReason: candidate?.finishReason
     }
   }
 }

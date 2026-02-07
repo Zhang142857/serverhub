@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -549,6 +550,16 @@ func (m *Manager) extractTarGz(r io.Reader, destDir string) error {
 		}
 
 		target := filepath.Join(destDir, header.Name)
+
+		// 路径穿越检查：确保解压目标在 destDir 内
+		absTarget, err := filepath.Abs(target)
+		if err != nil {
+			return fmt.Errorf("解析路径失败: %w", err)
+		}
+		absDest, _ := filepath.Abs(destDir)
+		if !strings.HasPrefix(absTarget, absDest+string(os.PathSeparator)) && absTarget != absDest {
+			return fmt.Errorf("检测到路径穿越攻击: %s", header.Name)
+		}
 
 		switch header.Typeflag {
 		case tar.TypeDir:

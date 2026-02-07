@@ -109,10 +109,10 @@ func Execute(ctx context.Context, command string, args []string, opts Options) (
 	}
 
 	// 设置环境变量（过滤危险变量）
-	cmd.Env = filterEnvVars(os.Environ())
+	cmd.Env = FilterEnvVars(os.Environ())
 	for k, v := range opts.Env {
 		// 验证环境变量名
-		if isValidEnvVar(k) {
+		if IsValidEnvVar(k) {
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
 	}
@@ -160,8 +160,8 @@ func Execute(ctx context.Context, command string, args []string, opts Options) (
 	return result, nil
 }
 
-// filterEnvVars 过滤危险的环境变量
-func filterEnvVars(envs []string) []string {
+// FilterEnvVars 过滤危险的环境变量
+func FilterEnvVars(envs []string) []string {
 	dangerousVars := map[string]bool{
 		"LD_PRELOAD":      true,
 		"LD_LIBRARY_PATH": true,
@@ -181,8 +181,8 @@ func filterEnvVars(envs []string) []string {
 	return filtered
 }
 
-// isValidEnvVar 验证环境变量名是否合法
-func isValidEnvVar(name string) bool {
+// IsValidEnvVar 验证环境变量名是否合法
+func IsValidEnvVar(name string) bool {
 	if len(name) == 0 {
 		return false
 	}

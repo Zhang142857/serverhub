@@ -86,7 +86,7 @@ export interface AvailableTool {
 
 // AI 配置
 export interface AISettings {
-  provider: 'ollama' | 'openai' | 'claude' | 'custom'
+  provider: 'ollama' | 'openai' | 'claude' | 'deepseek' | 'gemini' | 'groq' | 'mistral' | 'openrouter' | 'custom'
   apiKey?: string
   baseUrl?: string
   model?: string

@@ -2,13 +2,22 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"flag"
 	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -81,7 +90,7 @@ func loadConfig(configFile string) error {
 	viper.SetDefault("server.host", "0.0.0.0")
 	viper.SetDefault("server.port", 9527)
 	viper.SetDefault("server.api_port", 9528)
-	viper.SetDefault("server.tls.enabled", false)
+	viper.SetDefault("server.tls.enabled", true)
 	viper.SetDefault("auth.token", "")
 	viper.SetDefault("metrics.interval", 2)
 	viper.SetDefault("log.level", "info")
@@ -169,12 +178,29 @@ func run() error {
 		certFile := viper.GetString("server.tls.cert")
 		keyFile := viper.GetString("server.tls.key")
 
+		// 如果证书文件不存在，自动生成自签名证书
+		if certFile == "" || keyFile == "" {
+			dataDir := viper.GetString("data.dir")
+			certFile = filepath.Join(dataDir, "tls", "cert.pem")
+			keyFile = filepath.Join(dataDir, "tls", "key.pem")
+		}
+
+		if _, err := os.Stat(certFile); os.IsNotExist(err) {
+			log.Info().Msg("TLS 证书不存在，自动生成自签名证书...")
+			if err := generateSelfSignedCert(certFile, keyFile); err != nil {
+				return fmt.Errorf("生成自签名证书失败: %w", err)
+			}
+			log.Info().Str("cert", certFile).Str("key", keyFile).Msg("自签名证书已生成")
+		}
+
 		creds, err := credentials.NewServerTLSFromFile(certFile, keyFile)
 		if err != nil {
 			return fmt.Errorf("加载TLS证书失败: %w", err)
 		}
 		opts = append(opts, grpc.Creds(creds))
 		log.Info().Msg("TLS 已启用")
+	} else {
+		log.Warn().Msg("⚠️  TLS 已禁用，gRPC 通信未加密，强烈建议启用 TLS")
 	}
 
 	// 添加认证拦截器
@@ -247,5 +273,55 @@ func run() error {
 
 	<-ctx.Done()
 	log.Info().Msg("服务已停止")
+	return nil
+}
+
+// generateSelfSignedCert 生成自签名 TLS 证书
+func generateSelfSignedCert(certFile, keyFile string) error {
+	if err := os.MkdirAll(filepath.Dir(certFile), 0755); err != nil {
+		return err
+	}
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return err
+	}
+
+	serialNumber, _ := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject:      pkix.Name{Organization: []string{"Runixo Agent"}, CommonName: "runixo-agent"},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(10 * 365 * 24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		IPAddresses:  []net.IP{net.ParseIP("0.0.0.0"), net.ParseIP("127.0.0.1")},
+		DNSNames:     []string{"localhost"},
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+	if err != nil {
+		return err
+	}
+
+	certOut, err := os.Create(certFile)
+	if err != nil {
+		return err
+	}
+	pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	certOut.Close()
+
+	keyBytes, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return err
+	}
+	keyOut, err := os.OpenFile(keyFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	pem.Encode(keyOut, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
+	keyOut.Close()
+
 	return nil
 }

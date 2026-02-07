@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -128,6 +130,13 @@ func (s *AgentServer) ExecuteCommand(ctx context.Context, req *pb.CommandRequest
 	}, nil
 }
 
+// allowedShells 允许使用的 shell 列表
+var allowedShells = map[string]bool{
+	"/bin/bash": true, "/bin/sh": true, "/bin/zsh": true,
+	"/usr/bin/bash": true, "/usr/bin/zsh": true,
+	"bash": true, "sh": true, "zsh": true,
+}
+
 // ExecuteShell 交互式 Shell
 func (s *AgentServer) ExecuteShell(stream pb.AgentService_ExecuteShellServer) error {
 	firstMsg, err := stream.Recv()
@@ -148,10 +157,18 @@ func (s *AgentServer) ExecuteShell(stream pb.AgentService_ExecuteShellServer) er
 		}
 	}
 
+	// 安全检查：限制可用 shell
+	if !allowedShells[shell] {
+		return status.Errorf(codes.PermissionDenied, "不允许的 shell: %s", shell)
+	}
+
 	cmd := exec.Command(shell)
-	cmd.Env = os.Environ()
+	// 安全检查：过滤危险环境变量，复用 executor 的过滤逻辑
+	cmd.Env = executor.FilterEnvVars(os.Environ())
 	for k, v := range start.Env {
-		cmd.Env = append(cmd.Env, k+"="+v)
+		if executor.IsValidEnvVar(k) {
+			cmd.Env = append(cmd.Env, k+"="+v)
+		}
 	}
 
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{
@@ -430,6 +447,19 @@ func (s *AgentServer) UploadFile(stream pb.AgentService_UploadFileServer) error 
 				return status.Errorf(codes.PermissionDenied, "写入路径被拒绝: %v", err)
 			}
 
+			// 安全检查：验证 extractTo 路径
+			if isTarGz && extractTo != "" {
+				cleanExtractTo, err := security.SanitizePath(extractTo)
+				if err != nil {
+					return status.Errorf(codes.InvalidArgument, "解压路径安全检查失败: %v", err)
+				}
+				extractTo = cleanExtractTo
+
+				if err := pathValidator.ValidatePathForWrite(extractTo); err != nil {
+					return status.Errorf(codes.PermissionDenied, "解压路径被拒绝: %v", err)
+				}
+			}
+
 			// 创建父目录
 			if createDirs {
 				dir := filepath.Dir(filePath)
@@ -480,6 +510,11 @@ func (s *AgentServer) DownloadFile(req *pb.FileRequest, stream pb.AgentService_D
 	cleanPath, err := security.SanitizePath(req.Path)
 	if err != nil {
 		return status.Errorf(codes.InvalidArgument, "路径安全检查失败: %v", err)
+	}
+
+	// 安全检查：验证路径访问权限
+	if err := pathValidator.ValidatePath(cleanPath); err != nil {
+		return status.Errorf(codes.PermissionDenied, "路径访问被拒绝: %v", err)
 	}
 
 	// 打开文件
@@ -627,12 +662,54 @@ func (s *AgentServer) SearchDockerHub(ctx context.Context, req *pb.DockerSearchR
 	}, nil
 }
 
+// isBlockedURL 检查 URL 是否指向内网/元数据等禁止访问的地址
+func isBlockedURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("无效的 URL: %v", err)
+	}
+
+	// 只允许 http/https
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("不允许的协议: %s", u.Scheme)
+	}
+
+	host := u.Hostname()
+
+	// 解析 IP
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		// 无法解析的域名也放行（可能是外部域名暂时无法解析）
+		return nil
+	}
+
+	for _, ip := range ips {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return fmt.Errorf("禁止访问内网地址: %s", host)
+		}
+		// 阻止云元数据地址 169.254.169.254
+		if ip.Equal(net.ParseIP("169.254.169.254")) {
+			return fmt.Errorf("禁止访问云元数据服务")
+		}
+	}
+
+	return nil
+}
+
 // ProxyHttpRequest 代理 HTTP 请求
 func (s *AgentServer) ProxyHttpRequest(ctx context.Context, req *pb.HttpProxyRequest) (*pb.HttpProxyResponse, error) {
 	if req.Url == "" {
 		return &pb.HttpProxyResponse{
 			Success: false,
 			Error:   "URL 不能为空",
+		}, nil
+	}
+
+	// 安全检查：禁止访问内网/元数据地址
+	if err := isBlockedURL(req.Url); err != nil {
+		return &pb.HttpProxyResponse{
+			Success: false,
+			Error:   "URL 安全检查失败: " + err.Error(),
 		}, nil
 	}
 

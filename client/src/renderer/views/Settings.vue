@@ -154,47 +154,155 @@
                 <el-option label="Ollama (本地)" value="ollama" />
                 <el-option label="OpenAI" value="openai" />
                 <el-option label="Claude" value="claude" />
+                <el-option label="DeepSeek" value="deepseek" />
+                <el-option label="Google Gemini" value="gemini" />
+                <el-option label="Groq" value="groq" />
+                <el-option label="Mistral AI" value="mistral" />
+                <el-option label="OpenRouter" value="openrouter" />
+                <el-option label="自定义 (OpenAI 兼容)" value="custom" />
               </el-select>
             </el-form-item>
 
+            <!-- Ollama -->
             <template v-if="settings.ai.provider === 'ollama'">
               <el-form-item label="Ollama 地址">
                 <el-input v-model="settings.ai.ollamaUrl" placeholder="http://localhost:11434" style="width: 300px" />
               </el-form-item>
               <el-form-item label="模型">
-                <el-select v-model="settings.ai.ollamaModel" style="width: 200px">
+                <el-select v-model="settings.ai.ollamaModel" filterable allow-create style="width: 200px">
                   <el-option label="llama3" value="llama3" />
                   <el-option label="mistral" value="mistral" />
                   <el-option label="codellama" value="codellama" />
                   <el-option label="qwen2" value="qwen2" />
+                  <el-option label="qwen2.5" value="qwen2.5" />
+                  <el-option label="deepseek-r1" value="deepseek-r1" />
+                  <el-option label="phi3" value="phi3" />
+                  <el-option label="gemma2" value="gemma2" />
                 </el-select>
                 <el-button @click="testOllamaConnection" :loading="testing" style="margin-left: 12px">测试连接</el-button>
               </el-form-item>
             </template>
 
+            <!-- OpenAI -->
             <template v-if="settings.ai.provider === 'openai'">
               <el-form-item label="API Key">
                 <el-input v-model="settings.ai.openaiKey" type="password" show-password style="width: 300px" />
               </el-form-item>
+              <el-form-item label="Base URL">
+                <el-input v-model="settings.ai.openaiBaseUrl" placeholder="https://api.openai.com（留空使用默认）" style="width: 300px" />
+                <span class="form-hint">兼容 OpenAI 的第三方服务可填写自定义地址</span>
+              </el-form-item>
               <el-form-item label="模型">
-                <el-select v-model="settings.ai.openaiModel" style="width: 200px">
+                <el-select v-model="settings.ai.openaiModel" filterable allow-create style="width: 200px" placeholder="选择或输入模型 ID">
                   <el-option label="GPT-4o" value="gpt-4o" />
+                  <el-option label="GPT-4o mini" value="gpt-4o-mini" />
                   <el-option label="GPT-4 Turbo" value="gpt-4-turbo" />
                   <el-option label="GPT-3.5 Turbo" value="gpt-3.5-turbo" />
+                  <el-option label="o1" value="o1" />
+                  <el-option label="o1-mini" value="o1-mini" />
+                  <el-option label="o3-mini" value="o3-mini" />
                 </el-select>
+                <span class="form-hint">可直接输入任意模型 ID</span>
               </el-form-item>
             </template>
 
+            <!-- Claude -->
             <template v-if="settings.ai.provider === 'claude'">
               <el-form-item label="API Key">
                 <el-input v-model="settings.ai.claudeKey" type="password" show-password style="width: 300px" />
               </el-form-item>
               <el-form-item label="模型">
-                <el-select v-model="settings.ai.claudeModel" style="width: 200px">
+                <el-select v-model="settings.ai.claudeModel" filterable allow-create style="width: 200px">
                   <el-option label="Claude 3.5 Sonnet" value="claude-3-5-sonnet-20241022" />
+                  <el-option label="Claude 3.5 Haiku" value="claude-3-5-haiku-20241022" />
                   <el-option label="Claude 3 Opus" value="claude-3-opus-20240229" />
-                  <el-option label="Claude 3 Haiku" value="claude-3-haiku-20240307" />
                 </el-select>
+              </el-form-item>
+            </template>
+
+            <!-- DeepSeek -->
+            <template v-if="settings.ai.provider === 'deepseek'">
+              <el-form-item label="API Key">
+                <el-input v-model="settings.ai.deepseekKey" type="password" show-password style="width: 300px" />
+              </el-form-item>
+              <el-form-item label="模型">
+                <el-select v-model="settings.ai.deepseekModel" filterable allow-create style="width: 200px">
+                  <el-option label="DeepSeek Chat" value="deepseek-chat" />
+                  <el-option label="DeepSeek Reasoner" value="deepseek-reasoner" />
+                </el-select>
+              </el-form-item>
+            </template>
+
+            <!-- Gemini -->
+            <template v-if="settings.ai.provider === 'gemini'">
+              <el-form-item label="API Key">
+                <el-input v-model="settings.ai.geminiKey" type="password" show-password style="width: 300px" />
+              </el-form-item>
+              <el-form-item label="模型">
+                <el-select v-model="settings.ai.geminiModel" filterable allow-create style="width: 200px">
+                  <el-option label="Gemini 2.0 Flash" value="gemini-2.0-flash" />
+                  <el-option label="Gemini 1.5 Pro" value="gemini-1.5-pro" />
+                  <el-option label="Gemini 1.5 Flash" value="gemini-1.5-flash" />
+                </el-select>
+              </el-form-item>
+            </template>
+
+            <!-- Groq -->
+            <template v-if="settings.ai.provider === 'groq'">
+              <el-form-item label="API Key">
+                <el-input v-model="settings.ai.groqKey" type="password" show-password style="width: 300px" />
+              </el-form-item>
+              <el-form-item label="模型">
+                <el-select v-model="settings.ai.groqModel" filterable allow-create style="width: 200px">
+                  <el-option label="LLaMA 3.3 70B" value="llama-3.3-70b-versatile" />
+                  <el-option label="LLaMA 3.1 8B" value="llama-3.1-8b-instant" />
+                  <el-option label="Mixtral 8x7B" value="mixtral-8x7b-32768" />
+                  <el-option label="Gemma2 9B" value="gemma2-9b-it" />
+                </el-select>
+              </el-form-item>
+            </template>
+
+            <!-- Mistral AI -->
+            <template v-if="settings.ai.provider === 'mistral'">
+              <el-form-item label="API Key">
+                <el-input v-model="settings.ai.mistralKey" type="password" show-password style="width: 300px" />
+              </el-form-item>
+              <el-form-item label="模型">
+                <el-select v-model="settings.ai.mistralModel" filterable allow-create style="width: 200px">
+                  <el-option label="Mistral Large" value="mistral-large-latest" />
+                  <el-option label="Mistral Small" value="mistral-small-latest" />
+                  <el-option label="Codestral" value="codestral-latest" />
+                </el-select>
+              </el-form-item>
+            </template>
+
+            <!-- OpenRouter -->
+            <template v-if="settings.ai.provider === 'openrouter'">
+              <el-form-item label="API Key">
+                <el-input v-model="settings.ai.openrouterKey" type="password" show-password style="width: 300px" />
+              </el-form-item>
+              <el-form-item label="模型">
+                <el-select v-model="settings.ai.openrouterModel" filterable allow-create style="width: 200px" placeholder="输入模型 ID">
+                  <el-option label="GPT-4o" value="openai/gpt-4o" />
+                  <el-option label="Claude 3.5 Sonnet" value="anthropic/claude-3.5-sonnet" />
+                  <el-option label="DeepSeek Chat" value="deepseek/deepseek-chat" />
+                  <el-option label="Gemini Pro" value="google/gemini-pro-1.5" />
+                </el-select>
+                <span class="form-hint">可输入 OpenRouter 上任意模型 ID</span>
+              </el-form-item>
+            </template>
+
+            <!-- 自定义 OpenAI 兼容 -->
+            <template v-if="settings.ai.provider === 'custom'">
+              <el-form-item label="API Key">
+                <el-input v-model="settings.ai.customKey" type="password" show-password style="width: 300px" />
+              </el-form-item>
+              <el-form-item label="Base URL">
+                <el-input v-model="settings.ai.customBaseUrl" placeholder="https://your-api.com" style="width: 300px" />
+                <span class="form-hint">必须兼容 OpenAI /v1/chat/completions 接口</span>
+              </el-form-item>
+              <el-form-item label="模型 ID">
+                <el-input v-model="settings.ai.customModel" placeholder="输入模型 ID" style="width: 200px" />
               </el-form-item>
             </template>
           </el-form>
@@ -235,10 +343,6 @@
                 <el-option label="8192" :value="8192" />
                 <el-option label="16384" :value="16384" />
               </el-select>
-            </el-form-item>
-            <el-form-item label="OpenAI Base URL" v-if="settings.ai.provider === 'openai'">
-              <el-input v-model="settings.ai.openaiBaseUrl" placeholder="留空使用默认地址" style="width: 300px" />
-              <span class="form-hint">自定义 API 端点（兼容 OpenAI 的服务）</span>
             </el-form-item>
           </el-form>
         </el-card>
@@ -773,6 +877,19 @@ const defaultSettings = {
     openaiBaseUrl: '',
     claudeKey: '',
     claudeModel: 'claude-3-5-sonnet-20241022',
+    deepseekKey: '',
+    deepseekModel: 'deepseek-chat',
+    geminiKey: '',
+    geminiModel: 'gemini-2.0-flash',
+    groqKey: '',
+    groqModel: 'llama-3.3-70b-versatile',
+    mistralKey: '',
+    mistralModel: 'mistral-large-latest',
+    openrouterKey: '',
+    openrouterModel: 'openai/gpt-4o',
+    customKey: '',
+    customBaseUrl: '',
+    customModel: '',
     autoExecute: false,
     saveHistory: true,
     historyLimit: 50,

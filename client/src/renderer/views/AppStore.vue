@@ -26,6 +26,9 @@
         <el-option label="消息队列" value="mq" />
         <el-option label="监控" value="monitoring" />
         <el-option label="DevOps" value="devops" />
+        <el-option label="存储" value="storage" />
+        <el-option label="网络工具" value="network" />
+        <el-option label="安全工具" value="security" />
       </el-select>
       
       <el-select v-model="sortBy" placeholder="排序">
