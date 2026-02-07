@@ -70,11 +70,15 @@ export class GrpcClient extends EventEmitter {
     })
 
     const proto = grpc.loadPackageDefinition(packageDefinition) as any
-    const credentials = this.config.useTls
-      ? grpc.credentials.createSsl(null, null, null, {
-          checkServerIdentity: () => undefined // 信任自签名证书
-        })
-      : grpc.credentials.createInsecure()
+
+    let credentials: grpc.ChannelCredentials
+    if (this.config.useTls) {
+      // 自签名证书：跳过 CA 验证，仍然加密传输
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
+      credentials = grpc.credentials.createSsl()
+    } else {
+      credentials = grpc.credentials.createInsecure()
+    }
 
     const address = `${this.config.host}:${this.config.port}`
     this.client = new proto.runixo.AgentService(address, credentials)
