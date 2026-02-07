@@ -1,15 +1,14 @@
 /**
  * AI 网关 - 统一管理 AI 提供者、工具调用
- * 请求层委托给 ai-client.ts（多策略自动 fallback）
+ * 纯 HTTP SSE 实现，不依赖任何 AI SDK
  */
 
-import { tool, jsonSchema } from 'ai'
 import { EventEmitter } from 'events'
 import { app } from 'electron'
 import { join } from 'path'
 import { readFileSync, writeFileSync } from 'fs'
-import { streamChat as clientStreamChat, clearStrategyCache } from './ai-client'
-import type { StreamDelta, ClientConfig } from './ai-client'
+import { streamChat as clientStreamChat, stopCurrentStream } from './ai-client'
+import type { StreamDelta, ClientConfig, ToolDef } from './ai-client'
 import { ToolRegistry, toolRegistry, ToolExecutor } from './tools/registry'
 import { systemTools } from './tools/system'
 import { dockerTools } from './tools/docker'
@@ -63,7 +62,7 @@ export class AIGateway extends EventEmitter {
 
 重要规则：
 1. 如果有可用的工具，请主动使用工具获取真实数据，而不是猜测
-2. **每次调用工具后，必须用自然语言向用户解释工具的执行结果**
+2. 每次调用工具后，必须用自然语言向用户解释工具的执行结果
 3. 用简洁专业的语言回答，避免冗长的解释
 4. 如果工具执行失败，要说明原因并提供解决建议`
 
@@ -87,7 +86,7 @@ export class AIGateway extends EventEmitter {
 
   setToolExecutor(executor: ToolExecutor): void { this.toolExecutor = executor }
 
-  clearStrategyCache(): void { clearStrategyCache() }
+  stopStream(): void { stopCurrentStream() }
 
   getCommandPolicy(): CommandPolicy { return this.commandPolicy }
   setCommandPolicy(policy: CommandPolicy): void { this.commandPolicy = policy }
@@ -110,7 +109,6 @@ export class AIGateway extends EventEmitter {
   }
 
   setProvider(provider: string, config: Partial<AIConfig>): boolean {
-    clearStrategyCache()
     this.config = { ...this.config, provider: provider as AIConfig['provider'], ...config }
     try { writeFileSync(this.configPath, JSON.stringify(this.config, null, 2)) } catch {}
     return true
@@ -124,6 +122,7 @@ export class AIGateway extends EventEmitter {
       { id: 'openai', name: 'OpenAI', description: 'GPT 系列' },
       { id: 'claude', name: 'Claude', description: 'Anthropic Claude' },
       { id: 'deepseek', name: 'DeepSeek', description: 'DeepSeek 系列' },
+      { id: 'siliconflow', name: '硅基流动', description: '硅基流动 SiliconFlow' },
       { id: 'gemini', name: 'Gemini', description: 'Google Gemini' },
       { id: 'groq', name: 'Groq', description: 'Groq 推理加速' },
       { id: 'mistral', name: 'Mistral', description: 'Mistral AI' },
@@ -151,41 +150,43 @@ export class AIGateway extends EventEmitter {
       siliconflow: 'https://api.siliconflow.cn',
       ollama: 'http://localhost:11434',
     }
-    let url = this.config.baseUrl || defaults[this.config.provider] || 'https://api.openai.com'
+    const url = this.config.baseUrl || defaults[this.config.provider] || 'https://api.openai.com'
     return url.replace(/\/v1\/?$/, '').replace(/\/+$/, '')
   }
 
-  // ==================== 工具转换 ====================
+  // ==================== 工具定义转换 ====================
 
-  private getAISDKTools(serverId: string, onDelta: (delta: any) => void) {
-    if (!this.toolExecutor) return undefined
-    const executor = this.toolExecutor
-    const sdkTools: Record<string, any> = {}
-    for (const def of this.toolRegistry.getAll()) {
-      sdkTools[def.name] = tool({
-        description: def.description,
-        inputSchema: jsonSchema(def.parameters as any),
-        execute: async (params: any) => {
-          if (this.needsConfirmation(def)) {
-            const confirmId = `confirm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-            onDelta({ type: 'tool-confirm', toolName: def.name, args: params, confirmId })
-            const approved = await new Promise<boolean>(resolve => {
-              this.pendingConfirms.set(confirmId, { resolve })
-            })
-            if (!approved) return { success: false, error: '用户拒绝执行' }
-          }
-          try {
-            return await def.execute(params, {
-              serverId, executor,
-              onProgress: (msg: string) => this.emit('tool:progress', { tool: def.name, message: msg })
-            })
-          } catch (error) {
-            return { success: false, error: (error as Error).message }
-          }
-        }
+  private getToolDefs(): ToolDef[] {
+    return this.toolRegistry.getAll().map(def => ({
+      name: def.name,
+      description: def.description,
+      parameters: def.parameters
+    }))
+  }
+
+  // ==================== 工具执行器 ====================
+
+  private createToolExecutor(serverId: string, onDelta: (delta: StreamDelta) => void) {
+    const executor = this.toolExecutor!
+    return async (toolName: string, args: Record<string, unknown>): Promise<any> => {
+      const def = this.toolRegistry.get(toolName)
+      if (!def) return { success: false, error: `未知工具: ${toolName}` }
+
+      // 危险操作需要确认
+      if (this.needsConfirmation(def)) {
+        const confirmId = `confirm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+        onDelta({ type: 'tool-call' as any, toolName, args, confirmId } as any)
+        const approved = await new Promise<boolean>(resolve => {
+          this.pendingConfirms.set(confirmId, { resolve })
+        })
+        if (!approved) return { success: false, error: '用户拒绝执行' }
+      }
+
+      return await def.execute(args, {
+        serverId, executor,
+        onProgress: (msg: string) => this.emit('tool:progress', { tool: toolName, message: msg })
       })
     }
-    return sdkTools
   }
 
   // ==================== 统一流式聊天 ====================
@@ -209,7 +210,8 @@ export class AIGateway extends EventEmitter {
     }
 
     const hasServer = !!(context?.serverId && this.toolExecutor)
-    const tools = hasServer ? this.getAISDKTools(context!.serverId!, onDelta) : undefined
+    const tools = hasServer ? this.getToolDefs() : undefined
+    const executeTool = hasServer ? this.createToolExecutor(context!.serverId!, onDelta) : undefined
 
     console.log('[AIGateway] streamChat:', {
       provider: clientConfig.provider, model: clientConfig.model,
@@ -217,13 +219,16 @@ export class AIGateway extends EventEmitter {
     })
 
     try {
-      await clientStreamChat(clientConfig, { messages, tools, onDelta })
+      await clientStreamChat(clientConfig, { messages, tools, onDelta, executeTool })
       onDelta({ type: 'done' })
     } catch (error: any) {
+      if (error.name === 'AbortError') {
+        onDelta({ type: 'done' })
+        return
+      }
       const msg = error?.message || String(error)
       console.error('[AIGateway] streamChat error:', msg)
-      const detail = `请求失败 [${clientConfig.provider}/${clientConfig.model}]: ${msg}`
-      onDelta({ type: 'error', content: detail })
+      onDelta({ type: 'error', content: `请求失败 [${clientConfig.provider}/${clientConfig.model}]: ${msg}` })
       onDelta({ type: 'done' })
     }
   }

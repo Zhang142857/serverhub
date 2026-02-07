@@ -140,8 +140,6 @@
         </el-radio-group>
       </div>
       <el-divider />
-      <el-button @click="clearStrategyCache" type="warning" size="small">清空 API 策略缓存</el-button>
-      <p style="margin-top:8px;color:#999;font-size:12px">清空后下次请求将重新探测最佳 API 方式</p>
     </el-dialog>
   </div>
 </template>
@@ -206,12 +204,6 @@ async function onPolicyChange(val: string) {
 onMounted(async () => {
   commandPolicy.value = await window.electronAPI.ai.getCommandPolicy()
 })
-
-async function clearStrategyCache() {
-  await window.electronAPI.ai.clearStrategyCache()
-  ElMessage.success('API 策略缓存已清空')
-  showDebugDialog.value = false
-}
 
 function createNewConversation() { aiStore.createConversation(true, selectedServer.value || undefined) }
 

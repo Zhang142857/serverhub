@@ -639,8 +639,8 @@ export function setupIpcHandlers() {
     return aiGateway.getProviders()
   })
 
-  ipcMain.handle('ai:clearStrategyCache', async () => {
-    aiGateway.clearStrategyCache()
+  ipcMain.handle('ai:stopStream', async () => {
+    aiGateway.stopStream()
     return true
   })
 

@@ -224,14 +224,14 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('ai:setProvider', provider, config),
     getProviders: (): Promise<Array<{ id: string; name: string; description: string }>> =>
       ipcRenderer.invoke('ai:getProviders'),
-    clearStrategyCache: (): Promise<boolean> =>
-      ipcRenderer.invoke('ai:clearStrategyCache'),
     getCommandPolicy: (): Promise<string> =>
       ipcRenderer.invoke('ai:getCommandPolicy'),
     setCommandPolicy: (policy: string): Promise<boolean> =>
       ipcRenderer.invoke('ai:setCommandPolicy', policy),
     confirmTool: (confirmId: string, approved: boolean): Promise<boolean> =>
       ipcRenderer.invoke('ai:confirmTool', confirmId, approved),
+    stopStream: (): Promise<boolean> =>
+      ipcRenderer.invoke('ai:stopStream'),
   },
 
   // 系统对话框

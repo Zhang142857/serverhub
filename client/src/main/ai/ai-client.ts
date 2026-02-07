@@ -1,17 +1,8 @@
 /**
- * 统一 AI 请求模块
- * 支持多种 API 类型，同类型多种请求方式自动 fallback
- *
- * OpenAI 兼容: Chat Completions SDK → Responses SDK → 原始 axios SSE
- * Anthropic:   AI SDK
- * Google:      AI SDK
+ * AI 客户端 - 纯 HTTP SSE 实现
+ * 支持：流式输出、连续工具调用、思考过程、中断控制
+ * 不依赖任何 AI SDK
  */
-
-import { streamText } from 'ai'
-import { createOpenAI } from '@ai-sdk/openai'
-import { createAnthropic } from '@ai-sdk/anthropic'
-import { createGoogleGenerativeAI } from '@ai-sdk/google'
-import axios from 'axios'
 
 export interface ClientConfig {
   provider: string
@@ -24,153 +15,64 @@ export interface StreamDelta {
   type: 'content' | 'thinking' | 'tool-call' | 'tool-result' | 'done' | 'error'
   content?: string
   toolName?: string
+  toolCallId?: string
   args?: Record<string, unknown>
   result?: unknown
 }
 
+export interface ToolDef {
+  name: string
+  description: string
+  parameters: object
+}
+
 export interface StreamOptions {
-  messages: Array<{ role: string; content: string }>
-  tools?: Record<string, any>
+  messages: Array<{ role: string; content: string | any; tool_call_id?: string; tool_calls?: any[] }>
+  tools?: ToolDef[]
   onDelta: (delta: StreamDelta) => void
+  /** 工具执行器：收到 tool_call 后由外部执行，返回结果 */
+  executeTool?: (name: string, args: Record<string, unknown>) => Promise<any>
+  signal?: AbortSignal
 }
 
-// 策略缓存：记住每个 baseUrl 哪种方式能用，带 TTL
-const CACHE_TTL = 30 * 60 * 1000 // 30 分钟
-const strategyCache = new Map<string, { strategy: string; ts: number }>()
+// ==================== 全局中断控制 ====================
+let currentAbort: AbortController | null = null
 
-export function clearStrategyCache(): void {
-  strategyCache.clear()
-  console.log('[AIClient] Strategy cache cleared')
-}
-
-/**
- * 统一流式请求入口
- */
-export async function streamChat(config: ClientConfig, options: StreamOptions): Promise<void> {
-  const type = getApiType(config.provider)
-
-  if (type === 'anthropic') {
-    return sdkStream(config, options, () => {
-      const p = createAnthropic({ apiKey: config.apiKey || '' })
-      return p(config.model)
-    })
+export function stopCurrentStream(): void {
+  if (currentAbort) {
+    currentAbort.abort()
+    currentAbort = null
+    console.log('[AIClient] Stream aborted by user')
   }
-
-  if (type === 'google') {
-    return sdkStream(config, options, () => {
-      const p = createGoogleGenerativeAI({ apiKey: config.apiKey || '' })
-      return p(config.model)
-    })
-  }
-
-  // OpenAI 兼容：多策略 fallback
-  return openaiCompatibleStream(config, options)
 }
 
-function getApiType(provider: string): 'openai' | 'anthropic' | 'google' {
-  if (provider === 'claude') return 'anthropic'
-  if (provider === 'gemini') return 'google'
-  return 'openai'
-}
-
-// ==================== OpenAI 兼容多策略 ====================
-
-type Strategy = { name: string; fn: () => Promise<void> }
-
-async function openaiCompatibleStream(config: ClientConfig, options: StreamOptions): Promise<void> {
-  const baseURL = config.baseUrl + '/v1'
-  const apiKey = config.apiKey || 'ollama'
-
-  const strategies: Strategy[] = [
-    {
-      name: 'sdk-chat',
-      fn: () => {
-        const p = createOpenAI({ baseURL, apiKey })
-        return sdkStream(config, options, () => p.chat(config.model))
-      }
-    },
-    {
-      name: 'sdk-responses',
-      fn: () => {
-        const p = createOpenAI({ baseURL, apiKey })
-        return sdkStream(config, options, () => p(config.model))
-      }
-    },
-    {
-      name: 'raw-sse',
-      fn: () => rawSSEStream(config, options)
-    }
-  ]
-
-  // 优先用缓存的策略
-  const entry = strategyCache.get(config.baseUrl)
-  const cached = entry && (Date.now() - entry.ts < CACHE_TTL) ? entry.strategy : null
-  if (cached) {
-    const idx = strategies.findIndex(s => s.name === cached)
-    if (idx > 0) {
-      const [s] = strategies.splice(idx, 1)
-      strategies.unshift(s)
-    }
-  }
-
-  let lastError: any
-  for (const strategy of strategies) {
-    try {
-      await strategy.fn()
-      strategyCache.set(config.baseUrl, { strategy: strategy.name, ts: Date.now() })
-      return
-    } catch (error: any) {
-      lastError = error
-      const code = error?.statusCode ?? error?.response?.status ?? 0
-      // 只在 404/405/501（端点不存在）时 fallback，其他错误直接抛
-      if (code !== 404 && code !== 405 && code !== 501) throw error
-      console.log(`[AIClient] ${strategy.name} failed (${code}), trying next...`)
-    }
-  }
-  throw lastError
-}
-
-// ==================== AI SDK 通用流式 ====================
-
-// <think>/<thinking> 标签解析器（跨 chunk 状态）
+// ==================== <think> 标签解析器 ====================
 class ThinkTagParser {
   private inThink = false
   private buffer = ''
 
   parse(text: string, onDelta: StreamOptions['onDelta']): void {
     this.buffer += text
-    console.log('[ThinkTagParser] parse:', { text, inThink: this.inThink, bufferLen: this.buffer.length })
     while (this.buffer.length > 0) {
       if (!this.inThink) {
-        // 检查多种思考开始标签
         const match = this.buffer.match(/<think(?:ing)?>/)
         if (!match) {
-          // 可能标签还没收完，保留末尾 <... 部分
           const partial = this.buffer.lastIndexOf('<')
           if (partial >= 0 && partial > this.buffer.length - 12) {
-            if (partial > 0) {
-              console.log('[ThinkTagParser] emit content (partial):', this.buffer.slice(0, partial))
-              onDelta({ type: 'content', content: this.buffer.slice(0, partial) })
-            }
+            if (partial > 0) onDelta({ type: 'content', content: this.buffer.slice(0, partial) })
             this.buffer = this.buffer.slice(partial)
           } else {
-            console.log('[ThinkTagParser] emit content (full):', this.buffer)
             onDelta({ type: 'content', content: this.buffer })
             this.buffer = ''
           }
           return
         }
-        const idx = match.index!
-        if (idx > 0) {
-          console.log('[ThinkTagParser] emit content (before tag):', this.buffer.slice(0, idx))
-          onDelta({ type: 'content', content: this.buffer.slice(0, idx) })
-        }
+        if (match.index! > 0) onDelta({ type: 'content', content: this.buffer.slice(0, match.index!) })
         this.inThink = true
-        this.buffer = this.buffer.slice(idx + match[0].length)
+        this.buffer = this.buffer.slice(match.index! + match[0].length)
       } else {
         const match = this.buffer.match(/<\/think(?:ing)?>/)
         if (!match) {
-          // 保留末尾可能的 </... 部分
           const partial = this.buffer.lastIndexOf('<')
           if (partial >= 0 && partial > this.buffer.length - 14) {
             if (partial > 0) onDelta({ type: 'thinking', content: this.buffer.slice(0, partial) })
@@ -181,10 +83,9 @@ class ThinkTagParser {
           }
           return
         }
-        const idx = match.index!
-        if (idx > 0) onDelta({ type: 'thinking', content: this.buffer.slice(0, idx) })
+        if (match.index! > 0) onDelta({ type: 'thinking', content: this.buffer.slice(0, match.index!) })
         this.inThink = false
-        this.buffer = this.buffer.slice(idx + match[0].length)
+        this.buffer = this.buffer.slice(match.index! + match[0].length)
       }
     }
   }
@@ -197,124 +98,195 @@ class ThinkTagParser {
   }
 }
 
-async function sdkStream(
-  config: ClientConfig,
-  options: StreamOptions,
-  createModel: () => any
-): Promise<void> {
-  const model = createModel()
-  const result = streamText({
-    model,
-    messages: options.messages as any,
-    tools: options.tools,
-    maxSteps: 10,  // 允许最多 10 步，但会生成最终文本
-  })
+// ==================== 核心：流式请求 + 连续工具调用 ====================
 
-  const parser = new ThinkTagParser()
-  let hasReasoning = false
+const MAX_TOOL_ROUNDS = 15
 
-  for await (const part of result.fullStream) {
-    switch (part.type) {
-      case 'text-delta': {
-        const text = (part as any).textDelta ?? ''
-        if (hasReasoning) {
-          // 模型原生支持 reasoning，text 就是纯文本
-          options.onDelta({ type: 'content', content: text })
-        } else {
-          // 可能含 <think>/<thinking> 标签，需要解析
-          parser.parse(text, options.onDelta)
-        }
-        break
+export async function streamChat(config: ClientConfig, options: StreamOptions): Promise<void> {
+  const abort = new AbortController()
+  currentAbort = abort
+  // 外部 signal 联动
+  if (options.signal) {
+    options.signal.addEventListener('abort', () => abort.abort())
+  }
+
+  const url = `${config.baseUrl}/v1/chat/completions`
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${config.apiKey || 'ollama'}`,
+  }
+
+  // 构建 OpenAI tools 格式
+  const toolsDef = options.tools?.length ? options.tools.map(t => ({
+    type: 'function' as const,
+    function: { name: t.name, description: t.description, parameters: t.parameters }
+  })) : undefined
+
+  // 对话消息（会在工具调用循环中追加）
+  const messages = [...options.messages]
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    if (abort.signal.aborted) break
+
+    const body: any = { model: config.model, messages, stream: true }
+    if (toolsDef) body.tools = toolsDef
+
+    console.log(`[AIClient] Round ${round}, messages: ${messages.length}, model: ${config.model}`)
+
+    let resp: Response
+    try {
+      resp = await fetch(url, {
+        method: 'POST', headers, body: JSON.stringify(body), signal: abort.signal
+      })
+    } catch (e: any) {
+      if (e.name === 'AbortError') return
+      throw e
+    }
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => resp.statusText)
+      throw new Error(`API ${resp.status}: ${errText}`)
+    }
+
+    // 解析 SSE 流
+    const { hasToolCalls, toolCalls } = await parseSSEStream(
+      resp.body!, options.onDelta, abort.signal
+    )
+
+    // 没有工具调用 → AI 生成了最终回复，结束
+    if (!hasToolCalls) break
+
+    // 有工具调用 → 执行工具，把结果加入 messages，继续下一轮
+    if (!options.executeTool) break
+
+    // 构建 assistant message（含 tool_calls）
+    messages.push({
+      role: 'assistant',
+      content: null as any,
+      tool_calls: toolCalls.map(tc => ({
+        id: tc.id,
+        type: 'function',
+        function: { name: tc.name, arguments: JSON.stringify(tc.args) }
+      }))
+    })
+
+    // 逐个执行工具
+    for (const tc of toolCalls) {
+      if (abort.signal.aborted) break
+
+      options.onDelta({ type: 'tool-call', toolName: tc.name, toolCallId: tc.id, args: tc.args })
+
+      let result: any
+      try {
+        result = await options.executeTool(tc.name, tc.args)
+      } catch (e: any) {
+        result = { success: false, error: e.message }
       }
-      case 'reasoning':
-      case 'reasoning-delta':
-        hasReasoning = true
-        options.onDelta({ type: 'thinking', content: (part as any).textDelta ?? (part as any).text ?? '' })
-        break
-      case 'tool-call':
-        parser.flush(options.onDelta)
-        options.onDelta({ type: 'tool-call', toolName: (part as any).toolName, args: (part as any).args ?? (part as any).input })
-        break
-      case 'tool-result':
-        options.onDelta({ type: 'tool-result', toolName: (part as any).toolName, result: (part as any).result ?? (part as any).output })
-        break
-      case 'error':
-        options.onDelta({ type: 'error', content: String((part as any).error) })
-        break
+
+      options.onDelta({ type: 'tool-result', toolName: tc.name, toolCallId: tc.id, result })
+
+      messages.push({
+        role: 'tool',
+        tool_call_id: tc.id,
+        content: typeof result === 'string' ? result : JSON.stringify(result)
+      })
     }
   }
-  parser.flush(options.onDelta)
+
+  currentAbort = null
 }
 
-// ==================== 原始 axios SSE（最大兼容性） ====================
+// ==================== SSE 流解析 ====================
 
-async function rawSSEStream(config: ClientConfig, options: StreamOptions): Promise<void> {
-  const url = `${config.baseUrl}/v1/chat/completions`
+interface ParsedToolCall {
+  id: string
+  name: string
+  args: Record<string, unknown>
+}
 
-  const body: any = {
-    model: config.model,
-    messages: options.messages,
-    stream: true,
-  }
-
-  // 工具定义转 OpenAI 格式
-  if (options.tools) {
-    body.tools = Object.entries(options.tools).map(([name, t]: [string, any]) => ({
-      type: 'function',
-      function: { name, description: t.description, parameters: t.parameters?.jsonSchema ?? t.parameters ?? {} }
-    }))
-  }
-
-  const resp = await axios.post(url, body, {
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.apiKey || 'ollama'}`,
-    },
-    responseType: 'stream',
-    timeout: 120000,
-  })
-
+async function parseSSEStream(
+  body: ReadableStream<Uint8Array>,
+  onDelta: StreamOptions['onDelta'],
+  signal: AbortSignal
+): Promise<{ hasToolCalls: boolean; toolCalls: ParsedToolCall[] }> {
   const parser = new ThinkTagParser()
   let hasReasoning = false
 
-  for await (const chunk of resp.data) {
-    const lines = chunk.toString().split('\n')
-    for (const line of lines) {
-      if (!line.startsWith('data: ') || line === 'data: [DONE]') continue
-      try {
-        const json = JSON.parse(line.slice(6))
-        const delta = json.choices?.[0]?.delta
-        if (!delta) continue
+  // 增量 tool_calls 累积器（按 index）
+  const toolCallAccum = new Map<number, { id: string; name: string; argsStr: string }>()
 
-        // reasoning_content (DeepSeek-R1 / 部分服务商)
-        if (delta.reasoning_content) {
-          hasReasoning = true
-          options.onDelta({ type: 'thinking', content: delta.reasoning_content })
-        }
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
 
-        // content（可能含 <think>/<thinking> 标签）
-        if (delta.content) {
-          console.log('[rawSSE] content delta:', delta.content)
-          if (hasReasoning) {
-            options.onDelta({ type: 'content', content: delta.content })
-          } else {
-            parser.parse(delta.content, options.onDelta)
+  try {
+    while (!signal.aborted) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || '' // 保留最后不完整的行
+
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed.startsWith('data: ')) continue
+        if (trimmed === 'data: [DONE]') continue
+
+        try {
+          const json = JSON.parse(trimmed.slice(6))
+          const delta = json.choices?.[0]?.delta
+          if (!delta) continue
+
+          // reasoning_content（DeepSeek / 硅基流动）
+          if (delta.reasoning_content) {
+            hasReasoning = true
+            onDelta({ type: 'thinking', content: delta.reasoning_content })
           }
-        }
 
-        // tool_calls
-        if (delta.tool_calls) {
-          for (const tc of delta.tool_calls) {
-            if (tc.function?.name) {
-              try {
-                const args = tc.function.arguments ? JSON.parse(tc.function.arguments) : {}
-                options.onDelta({ type: 'tool-call', toolName: tc.function.name, args })
-              } catch {}
+          // content
+          if (delta.content) {
+            if (hasReasoning) {
+              onDelta({ type: 'content', content: delta.content })
+            } else {
+              parser.parse(delta.content, onDelta)
             }
           }
-        }
-      } catch {}
+
+          // 增量 tool_calls 累积
+          if (delta.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index ?? 0
+              if (!toolCallAccum.has(idx)) {
+                toolCallAccum.set(idx, {
+                  id: tc.id || `call_${Date.now()}_${idx}`,
+                  name: tc.function?.name || '',
+                  argsStr: ''
+                })
+              }
+              const acc = toolCallAccum.get(idx)!
+              if (tc.id) acc.id = tc.id
+              if (tc.function?.name) acc.name = tc.function.name
+              if (tc.function?.arguments) acc.argsStr += tc.function.arguments
+            }
+          }
+        } catch { /* 忽略解析错误 */ }
+      }
     }
+  } finally {
+    reader.releaseLock()
   }
-  parser.flush(options.onDelta)
+
+  parser.flush(onDelta)
+
+  // 解析累积的 tool_calls
+  const toolCalls: ParsedToolCall[] = []
+  for (const [, acc] of toolCallAccum) {
+    if (!acc.name) continue
+    let args: Record<string, unknown> = {}
+    try { args = JSON.parse(acc.argsStr || '{}') } catch {}
+    toolCalls.push({ id: acc.id, name: acc.name, args })
+  }
+
+  return { hasToolCalls: toolCalls.length > 0, toolCalls }
 }
