@@ -214,6 +214,14 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('ai:setProvider', provider, config),
     getProviders: (): Promise<Array<{ id: string; name: string; description: string }>> =>
       ipcRenderer.invoke('ai:getProviders'),
+    clearStrategyCache: (): Promise<boolean> =>
+      ipcRenderer.invoke('ai:clearStrategyCache'),
+    getCommandPolicy: (): Promise<string> =>
+      ipcRenderer.invoke('ai:getCommandPolicy'),
+    setCommandPolicy: (policy: string): Promise<boolean> =>
+      ipcRenderer.invoke('ai:setCommandPolicy', policy),
+    confirmTool: (confirmId: string, approved: boolean): Promise<boolean> =>
+      ipcRenderer.invoke('ai:confirmTool', confirmId, approved),
   },
 
   // 系统对话框
@@ -318,6 +326,16 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('secure:listKeys'),
     clearAll: (): Promise<{ success: boolean; error?: string }> =>
       ipcRenderer.invoke('secure:clearAll')
+  },
+
+  // 紧急避险
+  emergency: {
+    enable: (serverId: string, cpuThreshold: number, memThreshold: number): Promise<any> =>
+      ipcRenderer.invoke('emergency:enable', serverId, cpuThreshold, memThreshold),
+    disable: (serverId: string): Promise<any> =>
+      ipcRenderer.invoke('emergency:disable', serverId),
+    status: (serverId: string): Promise<any> =>
+      ipcRenderer.invoke('emergency:status', serverId),
   },
 
   // HTTP 请求（用于外部 API 调用）

@@ -203,6 +203,18 @@ func (v *PathValidator) ValidatePath(path string) error {
 		return fmt.Errorf("必须使用绝对路径")
 	}
 
+	// 解析符号链接，防止通过 symlink 绕过路径检查
+	realPath, err := filepath.EvalSymlinks(cleanPath)
+	if err == nil && realPath != cleanPath {
+		// 对真实路径也执行禁止路径检查
+		for _, forbidden := range v.config.ForbiddenPaths {
+			if strings.HasPrefix(realPath, forbidden) {
+				return fmt.Errorf("符号链接目标路径被禁止: %s", forbidden)
+			}
+		}
+		cleanPath = realPath
+	}
+
 	// 检查禁止访问的路径
 	for _, forbidden := range v.config.ForbiddenPaths {
 		if strings.HasPrefix(cleanPath, forbidden) {

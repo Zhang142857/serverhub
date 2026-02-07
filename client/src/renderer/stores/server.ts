@@ -163,8 +163,20 @@ export const useServerStore = defineStore('server', () => {
   }
 
   function saveToStorage() {
-    localStorage.setItem('runixo_servers', JSON.stringify(servers.value))
+    // 存储服务器列表时剥离 token，token 通过 secureStorage 加密存储
+    const serversWithoutTokens = servers.value.map(s => ({
+      ...s,
+      token: '' // 不在 localStorage 中存储 token
+    }))
+    localStorage.setItem('runixo_servers', JSON.stringify(serversWithoutTokens))
     localStorage.setItem('runixo_groups', JSON.stringify(groups.value))
+
+    // 将 token 存入加密存储
+    for (const s of servers.value) {
+      if (s.token) {
+        window.electronAPI.secure.setCredential(`server_token_${s.id}`, s.token)
+      }
+    }
   }
 
   function loadFromStorage() {
@@ -181,6 +193,24 @@ export const useServerStore = defineStore('server', () => {
 
     if (savedGroups) {
       groups.value = JSON.parse(savedGroups)
+    }
+
+    // 从加密存储恢复 token
+    restoreTokens()
+  }
+
+  async function restoreTokens() {
+    for (const s of servers.value) {
+      if (!s.token) {
+        try {
+          const result = await window.electronAPI.secure.getCredential(`server_token_${s.id}`)
+          if (result?.success && result.value) {
+            s.token = result.value
+          }
+        } catch {
+          // 加密存储不可用时静默失败
+        }
+      }
     }
   }
 

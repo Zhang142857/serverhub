@@ -2,9 +2,14 @@ package auth
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -229,7 +234,78 @@ func GenerateToken() (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-// ValidateToken 验证令牌格式
+// tokenClaims 签名令牌的载荷
+type tokenClaims struct {
+	Token     string `json:"tok"`
+	IssuedAt  int64  `json:"iat"`
+	ExpiresAt int64  `json:"exp"`
+}
+
+// GenerateSignedToken 生成带 HMAC-SHA256 签名和过期时间的令牌
+// 格式: base64(payload).base64(hmac-sha256(payload))
+func GenerateSignedToken(secretKey []byte, ttl time.Duration) (string, error) {
+	raw, err := GenerateToken()
+	if err != nil {
+		return "", err
+	}
+
+	now := time.Now().Unix()
+	claims := tokenClaims{
+		Token:     raw,
+		IssuedAt:  now,
+		ExpiresAt: now + int64(ttl.Seconds()),
+	}
+
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		return "", err
+	}
+
+	payloadB64 := base64.RawURLEncoding.EncodeToString(payload)
+	mac := hmac.New(sha256.New, secretKey)
+	mac.Write([]byte(payloadB64))
+	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+
+	return payloadB64 + "." + sig, nil
+}
+
+// ValidateSignedToken 验证签名令牌的完整性和有效期
+func ValidateSignedToken(token string, secretKey []byte) error {
+	parts := strings.SplitN(token, ".", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid token format")
+	}
+
+	payloadB64, sigB64 := parts[0], parts[1]
+
+	// 验证签名
+	mac := hmac.New(sha256.New, secretKey)
+	mac.Write([]byte(payloadB64))
+	expectedSig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	if subtle.ConstantTimeCompare([]byte(sigB64), []byte(expectedSig)) != 1 {
+		return fmt.Errorf("invalid token signature")
+	}
+
+	// 解析载荷
+	payload, err := base64.RawURLEncoding.DecodeString(payloadB64)
+	if err != nil {
+		return fmt.Errorf("invalid token payload")
+	}
+
+	var claims tokenClaims
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return fmt.Errorf("invalid token claims")
+	}
+
+	// 验证过期时间
+	if time.Now().Unix() > claims.ExpiresAt {
+		return fmt.Errorf("token expired")
+	}
+
+	return nil
+}
+
+// ValidateToken 验证令牌格式（兼容旧版静态令牌）
 func ValidateToken(token string) bool {
 	return len(token) >= TokenMinLength
 }
@@ -239,6 +315,8 @@ type SessionManager struct {
 	config   *TokenConfig
 	sessions map[string]*SessionInfo
 	mu       sync.RWMutex
+	ctx      context.Context
+	cancel   context.CancelFunc
 }
 
 // NewSessionManager 创建会话管理器
@@ -247,9 +325,12 @@ func NewSessionManager(config *TokenConfig) *SessionManager {
 		config = DefaultTokenConfig()
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	sm := &SessionManager{
 		config:   config,
 		sessions: make(map[string]*SessionInfo),
+		ctx:      ctx,
+		cancel:   cancel,
 	}
 
 	// 如果启用过期，启动清理协程
@@ -363,8 +444,13 @@ func (sm *SessionManager) cleanupLoop() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		sm.cleanup()
+	for {
+		select {
+		case <-sm.ctx.Done():
+			return
+		case <-ticker.C:
+			sm.cleanup()
+		}
 	}
 }
 
@@ -402,4 +488,11 @@ func (sm *SessionManager) GetSessionInfo(token string) *SessionInfo {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 	return sm.sessions[token]
+}
+
+// Close 关闭会话管理器，停止清理协程
+func (sm *SessionManager) Close() {
+	if sm.cancel != nil {
+		sm.cancel()
+	}
 }

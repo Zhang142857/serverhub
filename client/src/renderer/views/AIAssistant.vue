@@ -39,6 +39,9 @@
           <el-select v-model="selectedServer" placeholder="选择服务器" size="small" clearable style="width: 150px">
             <el-option v-for="server in connectedServers" :key="server.id" :label="server.name" :value="server.id" />
           </el-select>
+          <el-button text size="small" @click="showDebugDialog = true" title="调试">
+            <el-icon><Setting /></el-icon>
+          </el-button>
         </div>
       </div>
 
@@ -124,6 +127,21 @@
         </div>
       </div>
     </div>
+    <!-- 调试对话框 -->
+    <el-dialog v-model="showDebugDialog" title="调试" width="400px" append-to-body>
+      <div style="margin-bottom:16px">
+        <div style="font-weight:600;margin-bottom:8px">命令授权策略</div>
+        <el-radio-group v-model="commandPolicy" @change="onPolicyChange">
+          <el-radio value="auto-all">全部自动通过</el-radio>
+          <el-radio value="auto-safe">危险命令需审查</el-radio>
+          <el-radio value="auto-file">仅文件操作自动通过</el-radio>
+          <el-radio value="manual-all">全部需要审查</el-radio>
+        </el-radio-group>
+      </div>
+      <el-divider />
+      <el-button @click="clearStrategyCache" type="warning" size="small">清空 API 策略缓存</el-button>
+      <p style="margin-top:8px;color:#999;font-size:12px">清空后下次请求将重新探测最佳 API 方式</p>
+    </el-dialog>
   </div>
 </template>
 
@@ -145,6 +163,8 @@ const aiStore = useAIStore()
 const selectedServer = ref<string | null>(serverStore.currentServerId)
 const inputMessage = ref('')
 const messagesRef = ref<HTMLElement | null>(null)
+const showDebugDialog = ref(false)
+const commandPolicy = ref('auto-safe')
 let cleanupStreamListener: (() => void) | null = null
 
 const connectedServers = computed(() => serverStore.connectedServers)
@@ -176,6 +196,20 @@ function formatDate(date: Date) {
   if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`
   if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`
   return d.toLocaleDateString('zh-CN')
+}
+
+async function onPolicyChange(val: string) {
+  await window.electronAPI.ai.setCommandPolicy(val)
+}
+
+onMounted(async () => {
+  commandPolicy.value = await window.electronAPI.ai.getCommandPolicy()
+})
+
+async function clearStrategyCache() {
+  await window.electronAPI.ai.clearStrategyCache()
+  ElMessage.success('API 策略缓存已清空')
+  showDebugDialog.value = false
 }
 
 function createNewConversation() { aiStore.createConversation(true, selectedServer.value || undefined) }

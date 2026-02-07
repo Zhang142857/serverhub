@@ -30,7 +30,24 @@ type Collector struct {
 	// 上次采集的 CPU 数据（用于计算使用率）
 	lastCpuStats *CpuStat
 	lastCpuTime  time.Time
+	// 缓存的指标结果（减少重复采集）
+	cachedMetrics    *Metrics
+	cachedMetricsAt  time.Time
+	cacheValidFor    time.Duration
 }
+
+// 对象池：复用 Metrics 和切片，减少 GC 压力
+var (
+	metricsPool = sync.Pool{
+		New: func() interface{} { return &Metrics{} },
+	}
+	diskMetricPool = sync.Pool{
+		New: func() interface{} { return make([]*DiskMetric, 0, 16) },
+	}
+	netMetricPool = sync.Pool{
+		New: func() interface{} { return make([]*NetworkMetric, 0, 8) },
+	}
+)
 
 // CpuStat CPU 统计（来自 /proc/stat）
 type CpuStat struct {
@@ -65,6 +82,7 @@ func New() *Collector {
 	c := &Collector{
 		lastNetworkStats: make(map[string]*NetworkStat),
 		lastDiskStats:    make(map[string]*DiskStat),
+		cacheValidFor:    800 * time.Millisecond, // 800ms 内的重复请求直接返回缓存
 	}
 	// 预热 CPU 采集
 	cpu.Percent(time.Millisecond*100, false)
@@ -456,14 +474,18 @@ func (c *Collector) GetMetrics() (*Metrics, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	metrics := &Metrics{}
-	now := time.Now()
-
-	// CPU 使用率 - 使用 500ms 采样间隔
-	cpuPercent, err := cpu.Percent(time.Millisecond*500, false)
-	if err == nil && len(cpuPercent) > 0 {
-		metrics.CpuUsage = cpuPercent[0]
+	// 缓存命中：短时间内多个客户端请求同一数据，直接返回
+	if c.cachedMetrics != nil && time.Since(c.cachedMetricsAt) < c.cacheValidFor {
+		return c.cachedMetrics, nil
 	}
+
+	now := time.Now()
+	metrics := metricsPool.Get().(*Metrics)
+	metrics.DiskMetrics = metrics.DiskMetrics[:0]
+	metrics.NetworkMetrics = metrics.NetworkMetrics[:0]
+
+	// CPU 使用率 - 使用 /proc/stat 差值计算，避免 gopsutil 的阻塞式采样
+	metrics.CpuUsage = c.calculateCpuUsage()
 
 	// 内存使用率
 	vmem, err := mem.VirtualMemory()
@@ -487,19 +509,15 @@ func (c *Collector) GetMetrics() (*Metrics, error) {
 			for name, io := range diskIO {
 				dm := &DiskMetric{Device: name}
 				if last, ok := c.lastDiskStats[name]; ok {
-					// 计算速率 bytes/s
 					dm.ReadBytes = uint64(float64(io.ReadBytes-last.ReadBytes) / elapsed)
 					dm.WriteBytes = uint64(float64(io.WriteBytes-last.WriteBytes) / elapsed)
 					dm.ReadCount = uint64(float64(io.ReadCount-last.ReadCount) / elapsed)
 					dm.WriteCount = uint64(float64(io.WriteCount-last.WriteCount) / elapsed)
 				}
 				metrics.DiskMetrics = append(metrics.DiskMetrics, dm)
-				// 更新上次数据
 				c.lastDiskStats[name] = &DiskStat{
-					ReadBytes:  io.ReadBytes,
-					WriteBytes: io.WriteBytes,
-					ReadCount:  io.ReadCount,
-					WriteCount: io.WriteCount,
+					ReadBytes: io.ReadBytes, WriteBytes: io.WriteBytes,
+					ReadCount: io.ReadCount, WriteCount: io.WriteCount,
 				}
 			}
 		}
@@ -514,24 +532,24 @@ func (c *Collector) GetMetrics() (*Metrics, error) {
 			for _, io := range netIO {
 				nm := &NetworkMetric{Interface: io.Name}
 				if last, ok := c.lastNetworkStats[io.Name]; ok {
-					// 计算速率 bytes/s
 					nm.BytesSent = uint64(float64(io.BytesSent-last.BytesSent) / elapsed)
 					nm.BytesRecv = uint64(float64(io.BytesRecv-last.BytesRecv) / elapsed)
 					nm.PacketsSent = uint64(float64(io.PacketsSent-last.PacketsSent) / elapsed)
 					nm.PacketsRecv = uint64(float64(io.PacketsRecv-last.PacketsRecv) / elapsed)
 				}
 				metrics.NetworkMetrics = append(metrics.NetworkMetrics, nm)
-				// 更新上次数据
 				c.lastNetworkStats[io.Name] = &NetworkStat{
-					BytesSent:   io.BytesSent,
-					BytesRecv:   io.BytesRecv,
-					PacketsSent: io.PacketsSent,
-					PacketsRecv: io.PacketsRecv,
+					BytesSent: io.BytesSent, BytesRecv: io.BytesRecv,
+					PacketsSent: io.PacketsSent, PacketsRecv: io.PacketsRecv,
 				}
 			}
 		}
 		c.lastNetworkTime = now
 	}
+
+	// 更新缓存
+	c.cachedMetrics = metrics
+	c.cachedMetricsAt = now
 
 	return metrics, nil
 }

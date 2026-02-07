@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -20,6 +21,14 @@ var (
 	cmdValidator  *security.CommandValidator
 	pathValidator *security.PathValidator
 )
+
+// 缓冲区池：复用命令输出读取缓冲区
+var bufPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, 32*1024) // 32KB
+		return &buf
+	},
+}
 
 func init() {
 	config := security.DefaultSecurityConfig()
@@ -133,9 +142,10 @@ func Execute(ctx context.Context, command string, args []string, opts Options) (
 		return nil, fmt.Errorf("启动命令失败: %w", err)
 	}
 
-	// 读取输出
-	stdoutBytes, _ := io.ReadAll(stdout)
-	stderrBytes, _ := io.ReadAll(stderr)
+	// 读取输出（限制大小，处理错误）
+	const maxOutputSize = 10 * 1024 * 1024 // 10MB
+	stdoutBytes, stdoutErr := io.ReadAll(io.LimitReader(stdout, maxOutputSize))
+	stderrBytes, stderrErr := io.ReadAll(io.LimitReader(stderr, maxOutputSize))
 
 	// 等待完成
 	err = cmd.Wait()
@@ -144,6 +154,10 @@ func Execute(ctx context.Context, command string, args []string, opts Options) (
 		Stdout:     string(stdoutBytes),
 		Stderr:     string(stderrBytes),
 		DurationMs: time.Since(start).Milliseconds(),
+	}
+
+	if stdoutErr != nil || stderrErr != nil {
+		result.Stderr += "\n[警告] 读取输出时发生错误"
 	}
 
 	if err != nil {
@@ -410,7 +424,9 @@ func TailFile(ctx context.Context, path string, lines int, follow bool) (<-chan 
 			return
 		}
 
-		// 持续监听新内容
+		// 持续监听新内容（使用递增退避，避免 busy-wait）
+		backoff := 200 * time.Millisecond
+		maxBackoff := 2 * time.Second
 		for {
 			select {
 			case <-ctx.Done():
@@ -418,8 +434,12 @@ func TailFile(ctx context.Context, path string, lines int, follow bool) (<-chan 
 			default:
 				if scanner.Scan() {
 					lineChan <- scanner.Text()
+					backoff = 200 * time.Millisecond // 有新内容时重置退避
 				} else {
-					time.Sleep(100 * time.Millisecond)
+					time.Sleep(backoff)
+					if backoff < maxBackoff {
+						backoff = backoff * 3 / 2 // 1.5x 递增
+					}
 				}
 			}
 		}

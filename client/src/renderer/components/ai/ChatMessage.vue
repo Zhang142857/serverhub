@@ -46,6 +46,22 @@
               </div>
             </div>
           </div>
+
+          <!-- 工具授权确认 -->
+          <div v-else-if="part.type === 'tool-confirm'" class="inline-tool-call confirm">
+            <div class="tool-header">
+              <el-icon class="tool-icon"><Warning v-if="part.status === 'calling'" /><CircleCheck v-else-if="part.status === 'done'" /><CircleClose v-else /></el-icon>
+              <span class="tool-name">{{ part.toolName }}</span>
+              <span class="tool-status">{{ part.status === 'calling' ? '等待授权' : part.status === 'done' ? '已批准' : '已拒绝' }}</span>
+            </div>
+            <div v-if="part.args" class="tool-detail" style="display:block">
+              <div class="tool-section"><span class="section-label">参数</span><pre>{{ JSON.stringify(part.args, null, 2) }}</pre></div>
+            </div>
+            <div v-if="part.status === 'calling'" class="confirm-actions">
+              <el-button type="primary" size="small" @click="aiStore.confirmTool(part.confirmId!, true)">批准执行</el-button>
+              <el-button type="danger" size="small" @click="aiStore.confirmTool(part.confirmId!, false)">拒绝</el-button>
+            </div>
+          </div>
         </template>
       </template>
 
@@ -77,9 +93,10 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { User, MagicStick, CopyDocument, Refresh, Loading, Sunny, CircleCheck, CircleClose, ArrowDown, ArrowUp } from '@element-plus/icons-vue'
-import type { Message } from '@/stores/ai'
+import { User, MagicStick, CopyDocument, Refresh, Loading, Sunny, CircleCheck, CircleClose, ArrowDown, ArrowUp, Warning } from '@element-plus/icons-vue'
+import { useAIStore, type Message } from '@/stores/ai'
 
+const aiStore = useAIStore()
 const props = defineProps<{ message: Message }>()
 defineEmits<{ regenerate: [] }>()
 
@@ -236,5 +253,18 @@ function copyContent() {
 .message-actions {
   display: flex; gap: 4px; margin-top: 8px; opacity: 0; transition: opacity 0.15s;
   .el-button { color: var(--text-muted); &:hover { color: var(--primary-color); } }
+}
+</style>
+
+<style scoped>
+.inline-tool-call.confirm {
+  border-color: #e6a23c;
+  background: rgba(230, 162, 60, 0.05);
+}
+.confirm-actions {
+  padding: 8px 12px;
+  display: flex;
+  gap: 8px;
+  border-top: 1px solid rgba(230, 162, 60, 0.2);
 }
 </style>

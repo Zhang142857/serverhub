@@ -12,6 +12,13 @@ import * as https from 'https'
 
 const gzip = promisify(zlib.gzip)
 
+// 过滤错误信息，防止泄露系统路径等敏感信息
+function sanitizeError(error: unknown): string {
+  const msg = error instanceof Error ? error.message : String(error)
+  // 移除文件系统路径
+  return msg.replace(/\/[^\s:]+/g, '[path]').replace(/[A-Z]:\\[^\s:]+/gi, '[path]')
+}
+
 // 存储所有服务器连接
 const serverConnections = new Map<string, GrpcClient>()
 const aiGateway = new AIGateway()
@@ -22,6 +29,35 @@ const activeStreams = new Map<string, any>()
 // 存储活跃的 Shell 会话
 const activeShells = new Map<string, any>()
 
+// 流超时清理（30分钟无活动自动关闭）
+const STREAM_TIMEOUT_MS = 30 * 60 * 1000
+const streamTimeouts = new Map<string, NodeJS.Timeout>()
+
+function trackStream(key: string, stream: any) {
+  clearStreamTimeout(key)
+  activeStreams.set(key, stream)
+  streamTimeouts.set(key, setTimeout(() => {
+    const s = activeStreams.get(key)
+    if (s) {
+      s.removeAllListeners?.()
+      s.cancel?.()
+    }
+    activeStreams.delete(key)
+    streamTimeouts.delete(key)
+  }, STREAM_TIMEOUT_MS))
+}
+
+function clearStreamTimeout(key: string) {
+  const t = streamTimeouts.get(key)
+  if (t) clearTimeout(t)
+  streamTimeouts.delete(key)
+}
+
+function removeStream(key: string) {
+  clearStreamTimeout(key)
+  activeStreams.delete(key)
+}
+
 export function setupIpcHandlers() {
   // ==================== 服务器连接管理 ====================
   ipcMain.handle('server:connect', async (_, config: ServerConfig) => {
@@ -31,7 +67,7 @@ export function setupIpcHandlers() {
       serverConnections.set(config.id, client)
       return { success: true, serverId: config.id }
     } catch (error) {
-      return { success: false, error: (error as Error).message }
+      return { success: false, error: sanitizeError(error) }
     }
   })
 
@@ -76,7 +112,7 @@ export function setupIpcHandlers() {
     }
 
     const stream = client.streamMetrics(interval)
-    activeStreams.set(streamKey, stream)
+    trackStream(streamKey, stream)
 
     stream.on('data', (metrics: any) => {
       // 调试：打印收到的指标数据结构
@@ -88,7 +124,7 @@ export function setupIpcHandlers() {
       event.sender.send(`metrics:error:${serverId}`, error.message)
     })
     stream.on('end', () => {
-      activeStreams.delete(streamKey)
+      removeStream(streamKey)
     })
 
     return { success: true }
@@ -98,7 +134,7 @@ export function setupIpcHandlers() {
     const streamKey = `metrics:${serverId}`
     if (activeStreams.has(streamKey)) {
       activeStreams.get(streamKey).removeAllListeners()
-      activeStreams.delete(streamKey)
+      removeStream(streamKey)
     }
     return { success: true }
   })
@@ -353,7 +389,7 @@ export function setupIpcHandlers() {
     }
 
     const stream = client.streamLog(path, lines, follow)
-    activeStreams.set(streamKey, stream)
+    trackStream(streamKey, stream)
 
     stream.on('data', (log: any) => {
       event.sender.send(`log:data:${path}`, log)
@@ -362,7 +398,7 @@ export function setupIpcHandlers() {
       event.sender.send(`log:error:${path}`, error.message)
     })
     stream.on('end', () => {
-      activeStreams.delete(streamKey)
+      removeStream(streamKey)
       event.sender.send(`log:end:${path}`)
     })
 
@@ -373,7 +409,7 @@ export function setupIpcHandlers() {
     const streamKey = `log:${serverId}:${path}`
     if (activeStreams.has(streamKey)) {
       activeStreams.get(streamKey).removeAllListeners()
-      activeStreams.delete(streamKey)
+      removeStream(streamKey)
     }
     return { success: true }
   })
@@ -601,6 +637,25 @@ export function setupIpcHandlers() {
 
   ipcMain.handle('ai:getProviders', async () => {
     return aiGateway.getProviders()
+  })
+
+  ipcMain.handle('ai:clearStrategyCache', async () => {
+    aiGateway.clearStrategyCache()
+    return true
+  })
+
+  ipcMain.handle('ai:getCommandPolicy', async () => {
+    return aiGateway.getCommandPolicy()
+  })
+
+  ipcMain.handle('ai:setCommandPolicy', async (_, policy: string) => {
+    aiGateway.setCommandPolicy(policy as any)
+    return true
+  })
+
+  ipcMain.handle('ai:confirmTool', async (_, confirmId: string, approved: boolean) => {
+    aiGateway.confirmTool(confirmId, approved)
+    return true
   })
 
   // ==================== 系统对话框 ====================
@@ -915,6 +970,27 @@ export function setupIpcHandlers() {
   })
 
   // ==================== 安全凭据存储 ====================
+  // ==================== 紧急避险 ====================
+  ipcMain.handle('emergency:enable', async (_, serverId: string, cpuThreshold: number, memThreshold: number) => {
+    const client = serverConnections.get(serverId)
+    if (!client) throw new Error('Server not connected')
+    return await client.executeCommand('__emergency:enable', [String(cpuThreshold), String(memThreshold)], { timeout: 5 })
+  })
+
+  ipcMain.handle('emergency:disable', async (_, serverId: string) => {
+    const client = serverConnections.get(serverId)
+    if (!client) throw new Error('Server not connected')
+    return await client.executeCommand('__emergency:disable', [], { timeout: 5 })
+  })
+
+  ipcMain.handle('emergency:status', async (_, serverId: string) => {
+    const client = serverConnections.get(serverId)
+    if (!client) throw new Error('Server not connected')
+    const result = await client.executeCommand('__emergency:status', [], { timeout: 5 })
+    try { return JSON.parse(result.stdout) } catch { return null }
+  })
+
+  // ==================== 安全凭据存储（续） ====================
   ipcMain.handle('secure:isAvailable', async () => {
     return secureStorage.isEncryptionAvailable()
   })

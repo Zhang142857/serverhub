@@ -55,12 +55,13 @@ export interface TaskStep {
 
 // 消息部分（内联渲染）
 export interface MessagePart {
-  type: 'text' | 'thinking' | 'tool-call'
+  type: 'text' | 'thinking' | 'tool-call' | 'tool-confirm'
   content?: string
   toolName?: string
   args?: Record<string, unknown>
   result?: unknown
   status?: 'calling' | 'done' | 'error'
+  confirmId?: string
 }
 
 // 消息类型
@@ -399,6 +400,10 @@ export const useAIStore = defineStore('ai', () => {
         }
         break
       }
+      case 'tool-confirm': {
+        parts.push({ type: 'tool-confirm', toolName: delta.toolName, args: delta.args, confirmId: delta.confirmId, status: 'calling' })
+        break
+      }
       case 'error': {
         const errMsg = delta.content || '请求失败'
         parts.push({ type: 'text', content: errMsg })
@@ -421,6 +426,21 @@ export const useAIStore = defineStore('ai', () => {
   }
 
   // 添加 ReAct 步骤
+  function confirmTool(confirmId: string, approved: boolean): void {
+    if (!currentConversation.value) return
+    const msgs = currentConversation.value.messages
+    for (const msg of msgs) {
+      if (!msg.parts) continue
+      for (const part of msg.parts) {
+        if (part.type === 'tool-confirm' && part.confirmId === confirmId) {
+          part.status = approved ? 'done' : 'error'
+          window.electronAPI.ai.confirmTool(confirmId, approved)
+          return
+        }
+      }
+    }
+  }
+
   function addStep(step: ReActStep): void {
     currentSteps.value.push(step)
   }
@@ -639,6 +659,7 @@ export const useAIStore = defineStore('ai', () => {
     createStreamingMessage,
     appendToLastMessage,
     finalizeStreamingMessage,
+    confirmTool,
     addStep,
     setPlan,
     updatePlan,

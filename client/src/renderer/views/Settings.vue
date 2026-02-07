@@ -528,6 +528,59 @@
             </el-form-item>
           </el-form>
         </el-card>
+
+        <el-card>
+          <template #header>
+            <div class="card-header-with-icon">
+              <el-icon><Warning /></el-icon>
+              <span>紧急避险</span>
+            </div>
+          </template>
+          <el-alert
+            type="warning"
+            :closable="false"
+            style="margin-bottom: 16px"
+          >
+            <template #title>
+              启用后，当服务器 CPU 或内存连续 3 分钟超过阈值时，将自动强制终止占用最高的进程。Docker 容器的重启策略也会被禁用。
+            </template>
+          </el-alert>
+          <el-form label-width="140px">
+            <el-form-item label="启用紧急避险">
+              <el-switch
+                v-model="emergencyKill.enabled"
+                @change="toggleEmergencyKill"
+                :loading="emergencyKill.loading"
+                active-color="#f56c6c"
+              />
+              <span class="form-hint">保护服务器免于资源耗尽崩溃</span>
+            </el-form-item>
+            <el-form-item label="CPU 阈值">
+              <el-slider v-model="emergencyKill.cpuThreshold" :min="70" :max="99" :step="1" style="width: 200px" :disabled="emergencyKill.enabled" />
+              <span class="form-hint">{{ emergencyKill.cpuThreshold }}%</span>
+            </el-form-item>
+            <el-form-item label="内存阈值">
+              <el-slider v-model="emergencyKill.memThreshold" :min="70" :max="99" :step="1" style="width: 200px" :disabled="emergencyKill.enabled" />
+              <span class="form-hint">{{ emergencyKill.memThreshold }}%</span>
+            </el-form-item>
+            <el-form-item v-if="emergencyKill.enabled" label="当前状态">
+              <el-tag :type="emergencyKill.consecutiveHigh > 0 ? 'warning' : 'success'" size="small">
+                {{ emergencyKill.consecutiveHigh > 0 ? `连续超阈值 ${emergencyKill.consecutiveHigh}/${emergencyKill.samplesRequired} 次` : '系统正常' }}
+              </el-tag>
+            </el-form-item>
+            <el-form-item v-if="emergencyKill.killHistory.length > 0" label="击杀记录">
+              <div class="kill-history">
+                <div v-for="(record, idx) in emergencyKill.killHistory.slice(-5).reverse()" :key="idx" class="kill-record">
+                  <el-tag :type="record.is_docker ? 'danger' : 'warning'" size="small">
+                    {{ record.is_docker ? '容器' : '进程' }}
+                  </el-tag>
+                  <span class="kill-name">{{ record.name }} (PID {{ record.pid }})</span>
+                  <span class="kill-stats">CPU {{ record.cpu.toFixed(1) }}% / MEM {{ record.memory.toFixed(1) }}%</span>
+                </div>
+              </div>
+            </el-form-item>
+          </el-form>
+        </el-card>
       </el-tab-pane>
 
       <!-- 代理设置 -->
@@ -838,6 +891,55 @@ const testingProxy = ref(false)
 const proxyTestResult = ref<{ success: boolean; message: string } | null>(null)
 const creatingBackup = ref(false)
 
+// 紧急避险状态
+const emergencyKill = ref({
+  enabled: false,
+  loading: false,
+  cpuThreshold: 95,
+  memThreshold: 95,
+  consecutiveHigh: 0,
+  samplesRequired: 9,
+  killHistory: [] as any[]
+})
+
+async function toggleEmergencyKill(val: boolean) {
+  const serverStore = (await import('../stores/server')).useServerStore()
+  const serverId = serverStore.currentServerId
+  if (!serverId) {
+    ElMessage.warning('请先连接服务器')
+    emergencyKill.value.enabled = !val
+    return
+  }
+  emergencyKill.value.loading = true
+  try {
+    if (val) {
+      await window.electronAPI.emergency.enable(serverId, emergencyKill.value.cpuThreshold, emergencyKill.value.memThreshold)
+    } else {
+      await window.electronAPI.emergency.disable(serverId)
+    }
+    ElMessage.success(val ? '紧急避险已启用' : '紧急避险已禁用')
+  } catch {
+    emergencyKill.value.enabled = !val
+    ElMessage.error('操作失败')
+  }
+  emergencyKill.value.loading = false
+}
+
+async function refreshEmergencyStatus() {
+  const serverStore = (await import('../stores/server')).useServerStore()
+  const serverId = serverStore.currentServerId
+  if (!serverId) return
+  try {
+    const data = await window.electronAPI.emergency.status(serverId)
+    if (data) {
+      emergencyKill.value.enabled = data.enabled
+      emergencyKill.value.consecutiveHigh = data.consecutiveHigh || 0
+      emergencyKill.value.samplesRequired = data.samplesRequired || 9
+      emergencyKill.value.killHistory = data.killHistory || []
+    }
+  } catch { /* ignore */ }
+}
+
 const defaultSettings = {
   language: 'zh-CN',
   theme: 'dark',
@@ -966,7 +1068,7 @@ const defaultSettings = {
 
 const settings = ref(JSON.parse(JSON.stringify(defaultSettings)))
 
-onMounted(() => { loadSettings() })
+onMounted(() => { loadSettings(); refreshEmergencyStatus() })
 
 function loadSettings() {
   const saved = localStorage.getItem('runixo_settings')

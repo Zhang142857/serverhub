@@ -18,6 +18,7 @@ import (
 	"github.com/rs/zerolog/log"
 	pb "github.com/runixo/agent/api/proto"
 	"github.com/runixo/agent/internal/collector"
+	"github.com/runixo/agent/internal/emergency"
 	"github.com/runixo/agent/internal/executor"
 	"github.com/runixo/agent/internal/security"
 	"google.golang.org/grpc/codes"
@@ -30,17 +31,19 @@ var pathValidator = security.NewPathValidator(security.DefaultSecurityConfig())
 // AgentServer 实现 AgentServiceServer
 type AgentServer struct {
 	pb.UnimplementedAgentServiceServer
-	version   string
-	collector *collector.Collector
-	token     string // 存储 token 用于 Authenticate 验证
+	version      string
+	collector    *collector.Collector
+	token        string
+	emergencyMgr *emergency.Manager
 }
 
 // NewAgentServer 创建新的 AgentServer
 func NewAgentServer(version string, token string) *AgentServer {
 	return &AgentServer{
-		version:   version,
-		collector: collector.New(),
-		token:     token,
+		version:      version,
+		collector:    collector.New(),
+		token:        token,
+		emergencyMgr: emergency.New(),
 	}
 }
 
@@ -107,6 +110,11 @@ func (s *AgentServer) GetMetrics(req *pb.MetricsRequest, stream pb.AgentService_
 
 // ExecuteCommand 执行命令
 func (s *AgentServer) ExecuteCommand(ctx context.Context, req *pb.CommandRequest) (*pb.CommandResponse, error) {
+	// 拦截紧急避险特殊命令
+	if resp := s.handleEmergencyCommand(req.Command, req.Args); resp != nil {
+		return resp, nil
+	}
+
 	timeout := time.Duration(req.TimeoutSeconds) * time.Second
 	if timeout == 0 {
 		timeout = 60 * time.Second
@@ -180,9 +188,16 @@ func (s *AgentServer) ExecuteShell(stream pb.AgentService_ExecuteShellServer) er
 	}
 	defer ptmx.Close()
 
+	ctx := stream.Context()
+
 	go func() {
 		buf := make([]byte, 4096)
 		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
 			n, err := ptmx.Read(buf)
 			if err != nil {
 				if err != io.EOF {
@@ -227,6 +242,13 @@ func (s *AgentServer) ReadFile(ctx context.Context, req *pb.FileRequest) (*pb.Fi
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "读取文件失败: %v", err)
 	}
+
+	// 限制 gRPC 消息大小
+	const maxGrpcMessageSize = 50 * 1024 * 1024 // 50MB
+	if len(content) > maxGrpcMessageSize {
+		return nil, status.Errorf(codes.ResourceExhausted, "文件过大，请使用流式下载")
+	}
+
 	return &pb.FileContent{
 		Content: content,
 		Info:    convertFileInfo(info),
@@ -676,23 +698,37 @@ func isBlockedURL(rawURL string) error {
 
 	host := u.Hostname()
 
-	// 解析 IP
-	ips, err := net.LookupIP(host)
-	if err != nil {
-		// 无法解析的域名也放行（可能是外部域名暂时无法解析）
+	// 先检查是否直接是 IP 字面量
+	if ip := net.ParseIP(host); ip != nil {
+		if err := checkBlockedIP(ip); err != nil {
+			return err
+		}
 		return nil
 	}
 
+	// 解析域名
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return fmt.Errorf("无法解析域名: %s", host)
+	}
+
 	for _, ip := range ips {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-			return fmt.Errorf("禁止访问内网地址: %s", host)
-		}
-		// 阻止云元数据地址 169.254.169.254
-		if ip.Equal(net.ParseIP("169.254.169.254")) {
-			return fmt.Errorf("禁止访问云元数据服务")
+		if err := checkBlockedIP(ip); err != nil {
+			return err
 		}
 	}
 
+	return nil
+}
+
+// checkBlockedIP 检查单个 IP 是否在禁止列表中
+func checkBlockedIP(ip net.IP) error {
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		return fmt.Errorf("禁止访问内网地址: %s", ip)
+	}
+	if ip.Equal(net.ParseIP("169.254.169.254")) {
+		return fmt.Errorf("禁止访问云元数据服务")
+	}
 	return nil
 }
 
@@ -755,8 +791,9 @@ func (s *AgentServer) ProxyHttpRequest(ctx context.Context, req *pb.HttpProxyReq
 	}
 	defer resp.Body.Close()
 
-	// 读取响应体
-	body, err := io.ReadAll(resp.Body)
+	// 读取响应体（限制大小防止 DoS）
+	const maxProxyResponseSize = 10 * 1024 * 1024 // 10MB
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxProxyResponseSize))
 	if err != nil {
 		return &pb.HttpProxyResponse{
 			Success: false,
@@ -779,4 +816,46 @@ func (s *AgentServer) ProxyHttpRequest(ctx context.Context, req *pb.HttpProxyReq
 		Headers:    headers,
 		Body:       body,
 	}, nil
+}
+
+// handleEmergencyCommand 处理紧急避险特殊命令，返回 nil 表示不是特殊命令
+func (s *AgentServer) handleEmergencyCommand(command string, args []string) *pb.CommandResponse {
+	switch command {
+	case "__emergency:enable":
+		cpuThresh := 95.0
+		memThresh := 95.0
+		if len(args) >= 2 {
+			if v, err := fmt.Sscanf(args[0], "%f", &cpuThresh); v == 0 || err != nil {
+				cpuThresh = 95.0
+			}
+			if v, err := fmt.Sscanf(args[1], "%f", &memThresh); v == 0 || err != nil {
+				memThresh = 95.0
+			}
+		}
+		s.emergencyMgr.SetConfig(emergency.Config{CPUThreshold: cpuThresh, MemThreshold: memThresh})
+		s.emergencyMgr.Enable()
+		return &pb.CommandResponse{ExitCode: 0, Stdout: `{"success":true,"message":"紧急避险已启用"}`}
+
+	case "__emergency:disable":
+		s.emergencyMgr.Disable()
+		return &pb.CommandResponse{ExitCode: 0, Stdout: `{"success":true,"message":"紧急避险已禁用"}`}
+
+	case "__emergency:status":
+		enabled, consecutive, history := s.emergencyMgr.GetStatus()
+		historyJSON := "["
+		for i, h := range history {
+			if i > 0 {
+				historyJSON += ","
+			}
+			historyJSON += fmt.Sprintf(`{"pid":%d,"name":"%s","reason":"%s","cpu":%.1f,"memory":%.1f,"is_docker":%v,"timestamp":%d}`,
+				h.PID, h.Name, h.Reason, h.CPU, h.Memory, h.IsDocker, h.Timestamp.Unix())
+		}
+		historyJSON += "]"
+		stdout := fmt.Sprintf(`{"enabled":%v,"consecutive_high":%d,"samples_required":%d,"kill_history":%s}`,
+			enabled, consecutive, emergency.SamplesRequired, historyJSON)
+		return &pb.CommandResponse{ExitCode: 0, Stdout: stdout}
+
+	default:
+		return nil
+	}
 }

@@ -1,16 +1,15 @@
 /**
- * AI 网关 - 基于 Vercel AI SDK
- * 统一管理 AI 提供者、流式输出、工具调用
+ * AI 网关 - 统一管理 AI 提供者、工具调用
+ * 请求层委托给 ai-client.ts（多策略自动 fallback）
  */
 
-import { streamText, tool, jsonSchema, stepCountIs } from 'ai'
-import { createOpenAI } from '@ai-sdk/openai'
-import { createAnthropic } from '@ai-sdk/anthropic'
-import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import { tool, jsonSchema } from 'ai'
 import { EventEmitter } from 'events'
 import { app } from 'electron'
 import { join } from 'path'
 import { readFileSync, writeFileSync } from 'fs'
+import { streamChat as clientStreamChat, clearStrategyCache } from './ai-client'
+import type { StreamDelta, ClientConfig } from './ai-client'
 import { ToolRegistry, toolRegistry, ToolExecutor } from './tools/registry'
 import { systemTools } from './tools/system'
 import { dockerTools } from './tools/docker'
@@ -21,7 +20,8 @@ import { networkTools } from './tools/network'
 import { backupTools } from './tools/backup'
 import { taskTools } from './tools/task'
 
-// AI 配置
+export type CommandPolicy = 'auto-all' | 'auto-safe' | 'auto-file' | 'manual-all'
+
 export interface AIConfig {
   provider: 'openai' | 'claude' | 'ollama' | 'deepseek' | 'gemini' | 'groq' | 'mistral' | 'openrouter' | 'custom'
   apiKey?: string
@@ -29,13 +29,11 @@ export interface AIConfig {
   model?: string
 }
 
-// 聊天消息
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
 }
 
-// AI 上下文
 export interface AIContext {
   serverId?: string
   history?: ChatMessage[]
@@ -43,30 +41,18 @@ export interface AIContext {
   agentMode?: boolean
 }
 
-// 流式 delta 事件
-export interface StreamDelta {
-  type: 'content' | 'thinking' | 'tool-call' | 'tool-result' | 'done' | 'error'
-  content?: string
-  toolName?: string
-  args?: Record<string, unknown>
-  result?: unknown
-}
+export type { StreamDelta }
 
-/**
- * AI 网关类
- */
 export class AIGateway extends EventEmitter {
-  private config: AIConfig = {
-    provider: 'ollama',
-    baseUrl: 'http://localhost:11434',
-    model: 'llama3'
-  }
-
+  private config: AIConfig = { provider: 'ollama', baseUrl: 'http://localhost:11434', model: 'llama3' }
   private configPath: string = ''
   private toolRegistry: ToolRegistry
   private toolExecutor: ToolExecutor | null = null
 
-  private systemPrompt: string = `你是 Runixo AI 助手，一个专业的服务器运维助手。你可以帮助用户：
+  private commandPolicy: CommandPolicy = 'auto-safe'
+  private pendingConfirms = new Map<string, { resolve: (approved: boolean) => void }>()
+
+  private systemPrompt = `你是 Runixo AI 助手，一个专业的服务器运维助手。你可以帮助用户：
 - 执行服务器命令
 - 管理 Docker 容器和镜像
 - 分析系统日志和性能指标
@@ -83,28 +69,43 @@ export class AIGateway extends EventEmitter {
       const saved = JSON.parse(readFileSync(this.configPath, 'utf-8'))
       if (saved.provider) this.config = { ...this.config, ...saved }
     } catch {}
-
     this.toolRegistry = toolRegistry
     this.registerDefaultTools()
   }
 
   private registerDefaultTools(): void {
-    this.toolRegistry.registerAll(systemTools)
-    this.toolRegistry.registerAll(dockerTools)
-    this.toolRegistry.registerAll(fileTools)
-    this.toolRegistry.registerAll(deploymentTools)
-    this.toolRegistry.registerAll(monitoringTools)
-    this.toolRegistry.registerAll(networkTools)
-    this.toolRegistry.registerAll(backupTools)
-    this.toolRegistry.registerAll(taskTools)
+    for (const tools of [systemTools, dockerTools, fileTools, deploymentTools, monitoringTools, networkTools, backupTools, taskTools]) {
+      this.toolRegistry.registerAll(tools)
+    }
     console.log(`[AIGateway] Registered ${this.toolRegistry.size} tools`)
   }
 
-  setToolExecutor(executor: ToolExecutor): void {
-    this.toolExecutor = executor
+  setToolExecutor(executor: ToolExecutor): void { this.toolExecutor = executor }
+
+  clearStrategyCache(): void { clearStrategyCache() }
+
+  getCommandPolicy(): CommandPolicy { return this.commandPolicy }
+  setCommandPolicy(policy: CommandPolicy): void { this.commandPolicy = policy }
+
+  confirmTool(confirmId: string, approved: boolean): void {
+    const pending = this.pendingConfirms.get(confirmId)
+    if (pending) {
+      pending.resolve(approved)
+      this.pendingConfirms.delete(confirmId)
+    }
+  }
+
+  private needsConfirmation(def: { category: string; dangerous?: boolean }): boolean {
+    switch (this.commandPolicy) {
+      case 'auto-all': return false
+      case 'auto-safe': return !!def.dangerous
+      case 'auto-file': return def.category !== 'file'
+      case 'manual-all': return true
+    }
   }
 
   setProvider(provider: string, config: Partial<AIConfig>): boolean {
+    clearStrategyCache()
     this.config = { ...this.config, provider: provider as AIConfig['provider'], ...config }
     try { writeFileSync(this.configPath, JSON.stringify(this.config, null, 2)) } catch {}
     return true
@@ -133,7 +134,7 @@ export class AIGateway extends EventEmitter {
     }))
   }
 
-  // ==================== AI SDK Provider 创建 ====================
+  // ==================== Base URL ====================
 
   private getBaseUrl(): string {
     const defaults: Record<string, string> = {
@@ -145,54 +146,33 @@ export class AIGateway extends EventEmitter {
       ollama: 'http://localhost:11434',
     }
     let url = this.config.baseUrl || defaults[this.config.provider] || 'https://api.openai.com'
-    url = url.replace(/\/v1\/?$/, '').replace(/\/+$/, '')
-    return url
-  }
-
-  private createModel() {
-    const { provider, apiKey, model } = this.config
-    const modelId = model || 'gpt-3.5-turbo'
-
-    switch (provider) {
-      case 'claude': {
-        const p = createAnthropic({ apiKey: apiKey || '' })
-        return p(modelId)
-      }
-      case 'gemini': {
-        const p = createGoogleGenerativeAI({ apiKey: apiKey || '' })
-        return p(modelId)
-      }
-      default: {
-        // OpenAI-compatible: openai, deepseek, groq, mistral, openrouter, custom, ollama
-        const p = createOpenAI({
-          baseURL: this.getBaseUrl() + '/v1',
-          apiKey: apiKey || 'ollama',
-        })
-        return p(modelId)
-      }
-    }
+    return url.replace(/\/v1\/?$/, '').replace(/\/+$/, '')
   }
 
   // ==================== 工具转换 ====================
 
-  private getAISDKTools(serverId: string) {
+  private getAISDKTools(serverId: string, onDelta: (delta: any) => void) {
     if (!this.toolExecutor) return undefined
     const executor = this.toolExecutor
-    const allTools = this.toolRegistry.getAll()
     const sdkTools: Record<string, any> = {}
-
-    for (const def of allTools) {
+    for (const def of this.toolRegistry.getAll()) {
       sdkTools[def.name] = tool({
         description: def.description,
         inputSchema: jsonSchema(def.parameters as any),
         execute: async (params: any) => {
+          if (this.needsConfirmation(def)) {
+            const confirmId = `confirm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+            onDelta({ type: 'tool-confirm', toolName: def.name, args: params, confirmId })
+            const approved = await new Promise<boolean>(resolve => {
+              this.pendingConfirms.set(confirmId, { resolve })
+            })
+            if (!approved) return { success: false, error: '用户拒绝执行' }
+          }
           try {
-            const result = await def.execute(params, {
-              serverId,
-              executor,
+            return await def.execute(params, {
+              serverId, executor,
               onProgress: (msg: string) => this.emit('tool:progress', { tool: def.name, message: msg })
             })
-            return result
           } catch (error) {
             return { success: false, error: (error as Error).message }
           }
@@ -209,68 +189,39 @@ export class AIGateway extends EventEmitter {
     context: AIContext | undefined,
     onDelta: (delta: StreamDelta) => void
   ): Promise<void> {
-    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    const messages = [
       { role: 'system', content: context?.systemPrompt || this.systemPrompt },
-      ...(context?.history || []).map(m => ({
-        role: m.role as 'system' | 'user' | 'assistant',
-        content: m.content
-      })),
+      ...(context?.history || []).map(m => ({ role: m.role, content: m.content })),
       { role: 'user', content: message }
     ]
 
-    const model = this.createModel()
+    const clientConfig: ClientConfig = {
+      provider: this.config.provider,
+      apiKey: this.config.apiKey,
+      baseUrl: this.getBaseUrl(),
+      model: this.config.model || 'gpt-3.5-turbo',
+    }
+
     const hasServer = !!(context?.serverId && this.toolExecutor)
-    const tools = hasServer ? this.getAISDKTools(context!.serverId!) : undefined
+    const tools = hasServer ? this.getAISDKTools(context!.serverId!, onDelta) : undefined
+
+    console.log('[AIGateway] streamChat:', {
+      provider: clientConfig.provider, model: clientConfig.model,
+      baseUrl: clientConfig.baseUrl, msgCount: messages.length, hasTools: !!tools
+    })
 
     try {
-      console.log('[AIGateway] streamChat:', { provider: this.config.provider, model: this.config.model, baseUrl: this.getBaseUrl(), msgCount: messages.length, hasTools: !!tools })
-      const result = streamText({
-        model,
-        messages,
-        tools,
-        stopWhen: tools ? stepCountIs(10) : undefined,
-      })
-
-      for await (const part of result.fullStream) {
-        switch (part.type) {
-          case 'text-delta':
-            onDelta({ type: 'content', content: (part as any).textDelta ?? (part as any).text ?? '' })
-            break
-          case 'reasoning':
-          case 'reasoning-delta':
-            onDelta({ type: 'thinking', content: (part as any).textDelta ?? (part as any).text ?? '' })
-            break
-          case 'tool-call':
-            onDelta({
-              type: 'tool-call',
-              toolName: (part as any).toolName,
-              args: (part as any).args ?? (part as any).input
-            })
-            break
-          case 'tool-result':
-            onDelta({
-              type: 'tool-result',
-              toolName: (part as any).toolName,
-              result: (part as any).result ?? (part as any).output
-            })
-            break
-          case 'error':
-            onDelta({ type: 'error', content: String((part as any).error) })
-            break
-          case 'finish':
-            break // 等循环自然结束
-        }
-      }
+      await clientStreamChat(clientConfig, { messages, tools, onDelta })
       onDelta({ type: 'done' })
     } catch (error: any) {
       const msg = error?.message || String(error)
-      console.error(`[AIGateway] streamChat error:`, msg, error?.cause || '')
-      onDelta({ type: 'error', content: `请求失败: ${msg}` })
+      console.error('[AIGateway] streamChat error:', msg)
+      const detail = `请求失败 [${clientConfig.provider}/${clientConfig.model}]: ${msg}`
+      onDelta({ type: 'error', content: detail })
       onDelta({ type: 'done' })
     }
   }
 
-  // 简单聊天（非流式，兼容旧接口）
   async chat(message: string, context?: AIContext): Promise<string> {
     let result = ''
     await this.streamChat(message, context, (delta) => {
@@ -280,5 +231,4 @@ export class AIGateway extends EventEmitter {
   }
 }
 
-// 单例
 export const aiGateway = new AIGateway()
