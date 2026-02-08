@@ -911,6 +911,8 @@ func (s *AgentServer) handleEmergencyCommand(command string, args []string) *pb.
 }
 
 // DownloadCertificate 下载 TLS 证书
+// TODO: 需要重新生成 proto 文件以包含 CertificateResponse
+/*
 func (s *AgentServer) DownloadCertificate(ctx context.Context, req *pb.Empty) (*pb.CertificateResponse, error) {
 	certFile := os.Getenv("TLS_CERT_FILE")
 	if certFile == "" {
@@ -936,6 +938,7 @@ func (s *AgentServer) DownloadCertificate(ctx context.Context, req *pb.Empty) (*
 		Fingerprint: fingerprint,
 	}, nil
 }
+*/
 
 // validateExtractedFiles 验证解压后的文件都在目标目录内（防止 zip-slip）
 func validateExtractedFiles(extractTo string) error {

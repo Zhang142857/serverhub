@@ -18,20 +18,6 @@ jobs:
           go-version: '1.22'
           cache-dependency-path: agent/go.sum
       
-      - name: Install protoc
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
-          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-      
-      - name: Generate proto
-        run: |
-          cd proto
-          protoc --go_out=../agent/api/proto --go_opt=paths=source_relative \
-                 --go-grpc_out=../agent/api/proto --go-grpc_opt=paths=source_relative \
-                 agent.proto
-      
       - name: Build Agent
         run: |
           cd agent
