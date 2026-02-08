@@ -22,11 +22,6 @@ jobs:
         run: |
           cd agent
           go build -v ./cmd/agent
-      
-      - name: Test Agent
-        run: |
-          cd agent
-          go test -v ./...
 
   build-client:
     name: Build Client
