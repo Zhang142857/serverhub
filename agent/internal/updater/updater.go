@@ -73,7 +73,6 @@ type Updater struct {
 	config         *Config
 	currentVersion string
 	dataDir        string
-	updateURL      string
 	mu             sync.RWMutex
 	ctx            context.Context
 	cancel         context.CancelFunc
@@ -94,7 +93,6 @@ func NewUpdater(currentVersion, dataDir string) (*Updater, error) {
 		config:         DefaultConfig(),
 		currentVersion: currentVersion,
 		dataDir:        dataDir,
-		updateURL:      "https://runixo.top",
 		ctx:            ctx,
 		cancel:         cancel,
 		progressChan:   make(chan *DownloadProgress, 10),
@@ -227,40 +225,65 @@ func (u *Updater) checkAndUpdate() {
 	}
 }
 
-// CheckUpdate 检查更新
+// CheckUpdate 检查更新（从 GitHub Releases 获取）
 func (u *Updater) CheckUpdate() (*UpdateInfo, error) {
 	u.mu.Lock()
 	u.config.LastCheck = time.Now().Format(time.RFC3339)
 	u.saveConfig()
 	u.mu.Unlock()
 
-	// 构建检查 URL
-	url := fmt.Sprintf("%s/api/v1/agent/check?version=%s&channel=%s&os=%s&arch=%s",
-		u.updateURL,
-		u.currentVersion,
-		u.config.UpdateChannel,
-		runtime.GOOS,
-		runtime.GOARCH,
-	)
-
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	url := "https://api.github.com/repos/Zhang142857/runixo/releases/tags/latest"
+	httpClient := &http.Client{Timeout: 15 * time.Second}
 	resp, err := httpClient.Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("请求更新服务器失败: %w", err)
+		return nil, fmt.Errorf("请求 GitHub 失败: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("更新服务器返回错误: %s", resp.Status)
+		return nil, fmt.Errorf("GitHub 返回错误: %s", resp.Status)
 	}
 
-	var info UpdateInfo
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
-		return nil, fmt.Errorf("解析更新信息失败: %w", err)
+	var release struct {
+		TagName string `json:"tag_name"`
+		Body    string `json:"body"`
+		Assets  []struct {
+			Name string `json:"name"`
+			Size int64  `json:"size"`
+			URL  string `json:"browser_download_url"`
+		} `json:"assets"`
+		PublishedAt string `json:"published_at"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return nil, fmt.Errorf("解析 GitHub 响应失败: %w", err)
 	}
 
-	info.CurrentVersion = u.currentVersion
-	return &info, nil
+	// 查找当前平台的二进制
+	assetName := fmt.Sprintf("runixo-agent-%s-%s", runtime.GOOS, runtime.GOARCH)
+	var downloadURL string
+	var size int64
+	for _, a := range release.Assets {
+		if a.Name == assetName {
+			downloadURL = a.URL
+			size = a.Size
+			break
+		}
+	}
+
+	// 比较版本：从 release 的 body 中提取 commit sha 或直接比较文件大小
+	// 简单方案：如果 release 中有对应平台的文件，且当前版本不等于 latest tag，则有更新
+	latestVersion := release.TagName
+	available := downloadURL != "" && latestVersion != u.currentVersion
+
+	return &UpdateInfo{
+		Available:      available,
+		CurrentVersion: u.currentVersion,
+		LatestVersion:  latestVersion,
+		ReleaseNotes:   release.Body,
+		DownloadURL:    downloadURL,
+		Size:           size,
+		ReleaseDate:    release.PublishedAt,
+	}, nil
 }
 
 // DownloadUpdate 下载更新
@@ -337,13 +360,32 @@ func (u *Updater) downloadFile(downloadURL, destPath string, totalSize int64, pr
 	return nil
 }
 
-// ApplyUpdate 应用更新（gRPC 入口，从已下载的文件应用）
+// ApplyUpdate 应用更新（先下载再替换二进制）
 func (u *Updater) ApplyUpdate(version string) error {
+	// 先检查更新获取下载信息
+	info, err := u.CheckUpdate()
+	if err != nil {
+		return fmt.Errorf("获取更新信息失败: %w", err)
+	}
+	if !info.Available {
+		return fmt.Errorf("没有可用更新")
+	}
+
+	// 下载二进制
 	downloadDir := filepath.Join(u.dataDir, "downloads")
+	if err := os.MkdirAll(downloadDir, 0755); err != nil {
+		return err
+	}
 	binaryPath := filepath.Join(downloadDir, "runixo-agent")
 	if runtime.GOOS == "windows" {
 		binaryPath += ".exe"
 	}
+
+	log.Info().Str("url", info.DownloadURL).Msg("开始下载更新")
+	if err := u.downloadFile(info.DownloadURL, binaryPath, info.Size, nil); err != nil {
+		return fmt.Errorf("下载失败: %w", err)
+	}
+
 	return u.applyBinary(binaryPath, version)
 }
 
