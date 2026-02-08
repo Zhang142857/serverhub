@@ -1,5 +1,0 @@
-name = "runixo"
-compatibility_date = "2025-02-01"
-
-[vars]
-GITHUB_REPO = "Zhang142857/runixo"

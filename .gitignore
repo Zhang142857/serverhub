@@ -67,3 +67,6 @@ components.d.ts
 # 工具目录
 .opencode/
 client/test-results/
+
+# 独立仓库
+server/
