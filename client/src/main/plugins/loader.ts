@@ -343,11 +343,16 @@ class PluginLoader extends EventEmitter {
    */
   async installFromFile(filePath: string): Promise<LoadedPlugin> {
     if (!filePath.endsWith('.shplugin')) throw new Error('Invalid file: must be .shplugin format')
-    const extractZip = require('extract-zip')
+    const { execSync } = require('child_process')
     const tmpDir = path.join(this.pluginsDir, '_tmp_' + Date.now())
     fs.mkdirSync(tmpDir, { recursive: true })
     try {
-      await extractZip(filePath, { dir: tmpDir })
+      // 使用系统自带的解压工具
+      if (process.platform === 'win32') {
+        execSync(`powershell -Command "Expand-Archive -Force -Path '${filePath}' -DestinationPath '${tmpDir}'"`)
+      } else {
+        execSync(`unzip -o "${filePath}" -d "${tmpDir}"`)
+      }
       const mPath = path.join(tmpDir, 'plugin.json')
       if (!fs.existsSync(mPath)) throw new Error('Invalid plugin: plugin.json not found in archive')
       const manifest = await this.loadManifest(mPath)
