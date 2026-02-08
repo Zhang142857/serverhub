@@ -31,10 +31,10 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Enabled:           true,
-		RequestsPerMinute: 300,  // 每分钟300请求，足够正常使用
-		CommandsPerMinute: 60,   // 每分钟60个命令
-		FileOpsPerMinute:  120,  // 每分钟120个文件操作
-		BurstSize:         20,   // 允许20个突发请求
+		RequestsPerMinute: 600,
+		CommandsPerMinute: 200,
+		FileOpsPerMinute:  300,
+		BurstSize:         50,
 	}
 }
 
