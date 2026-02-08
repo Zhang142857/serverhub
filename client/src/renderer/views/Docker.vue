@@ -1066,6 +1066,30 @@ async function searchForPull() {
   pullSearchResults.value = []
   
   const query = pullSearchQuery.value.toLowerCase().trim()
+
+  // 在线模式：优先走中心服务器代理
+  const _settings = JSON.parse(localStorage.getItem('runixo_settings') || '{}')
+  if (_settings.server?.onlineMode && _settings.server?.url) {
+    try {
+      const resp = await fetch(`${_settings.server.url}/api/v1/docker/search?q=${encodeURIComponent(pullSearchQuery.value)}&page_size=20`)
+      if (resp.ok) {
+        const data = await resp.json()
+        if (data.results?.length > 0) {
+          pullSearchResults.value = data.results.map((r: any) => ({
+            name: r.name, repo_name: r.name,
+            short_description: r.description || '',
+            star_count: r.star_count || 0,
+            is_official: r.is_official || false,
+            pull_count: r.pull_count || 0
+          }))
+          pullSearching.value = false
+          return
+        }
+      }
+    } catch (e) {
+      console.error('Central server search error:', e)
+    }
+  }
   
   // 服务端代理模式：优先使用服务端搜索 Docker Hub
   if (dockerProxy.value.mode === 'server' && selectedServer.value) {
@@ -1406,7 +1430,13 @@ async function searchDockerHub() {
   hubSearching.value = true
   hubSearchResults.value = []
   try {
-    const response = await fetch(`https://hub.docker.com/v2/search/repositories/?query=${encodeURIComponent(hubSearch.value)}&page_size=20`)
+    // 在线模式：走中心服务器代理
+    const _settings = JSON.parse(localStorage.getItem('runixo_settings') || '{}')
+    let searchUrl = `https://hub.docker.com/v2/search/repositories/?query=${encodeURIComponent(hubSearch.value)}&page_size=20`
+    if (_settings.server?.onlineMode && _settings.server?.url) {
+      searchUrl = `${_settings.server.url}/api/v1/docker/search?q=${encodeURIComponent(hubSearch.value)}&page_size=20`
+    }
+    const response = await fetch(searchUrl)
     const data = await response.json()
     hubSearchResults.value = data.results || []
   } catch (e) {

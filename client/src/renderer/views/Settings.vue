@@ -58,6 +58,27 @@
         </el-card>
 
         <el-card>
+          <template #header>
+            <div class="card-header-with-icon">
+              <el-icon><Connection /></el-icon>
+              <span>在线服务</span>
+            </div>
+          </template>
+          <el-form label-width="140px">
+            <el-form-item label="在线模式">
+              <el-switch v-model="settings.server.onlineMode" />
+              <span class="form-hint">启用后可使用插件市场和 Docker 搜索代理等在线功能</span>
+            </el-form-item>
+            <template v-if="settings.server.onlineMode">
+              <el-form-item label="中心服务器">
+                <el-input v-model="settings.server.url" placeholder="https://runixo.top" style="width: 300px" />
+                <span class="form-hint">官方服务器：https://runixo.top</span>
+              </el-form-item>
+            </template>
+          </el-form>
+        </el-card>
+
+        <el-card>
           <template #header><span>启动行为</span></template>
           <el-form label-width="140px">
             <el-form-item label="开机自启动">
@@ -895,7 +916,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Link, Document, Monitor, Key, Lock, Upload, Download, Refresh, Warning, Cpu, Box } from '@element-plus/icons-vue'
+import { Link, Document, Monitor, Key, Lock, Upload, Download, Refresh, Warning, Cpu, Box, Connection } from '@element-plus/icons-vue'
 
 const activeTab = ref('general')
 const saving = ref(false)
@@ -1067,6 +1088,11 @@ const defaultSettings = {
     autoDownload: false,
     channel: 'stable'
   },
+  // 在线服务
+  server: {
+    onlineMode: false,
+    url: 'https://runixo.top'
+  },
   // Agent 自动更新
   agentUpdate: {
     autoUpdate: false,
@@ -1106,6 +1132,7 @@ function loadSettings() {
         security: { ...defaultSettings.security, ...parsed.security },
         proxy: { ...defaultSettings.proxy, ...parsed.proxy },
         update: { ...defaultSettings.update, ...parsed.update },
+        server: { ...defaultSettings.server, ...parsed.server },
         backup: { ...defaultSettings.backup, ...parsed.backup }
       }
     } catch { /* ignore */ }

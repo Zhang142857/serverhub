@@ -16,28 +16,48 @@
         <el-button @click="triggerFileInstall" type="success" plain>
           <el-icon><Upload /></el-icon>安装本地插件
         </el-button>
-        <el-input
-          v-model="searchQuery"
-          placeholder="搜索插件..."
-          class="search-input"
-          clearable
-        >
-          <template #prefix>
-            <el-icon><Search /></el-icon>
-          </template>
-        </el-input>
-        <el-select v-model="sortBy" style="width: 140px">
-          <el-option label="最热门" value="downloads" />
-          <el-option label="最高评分" value="rating" />
-          <el-option label="最新更新" value="updated" />
-          <el-option label="名称" value="name" />
-        </el-select>
-        <el-button @click="checkAllUpdates" :loading="checkingUpdates">
-          <el-icon><Refresh /></el-icon>
-          检查更新
-        </el-button>
+        <template v-if="isOnlineMode">
+          <el-input
+            v-model="searchQuery"
+            placeholder="搜索插件..."
+            class="search-input"
+            clearable
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+          <el-select v-model="sortBy" style="width: 140px">
+            <el-option label="最热门" value="downloads" />
+            <el-option label="最高评分" value="rating" />
+            <el-option label="最新更新" value="updated" />
+            <el-option label="名称" value="name" />
+          </el-select>
+          <el-button @click="checkAllUpdates" :loading="checkingUpdates">
+            <el-icon><Refresh /></el-icon>
+            检查更新
+          </el-button>
+        </template>
       </div>
     </div>
+
+    <!-- 离线模式提示 -->
+    <div v-if="!isOnlineMode" class="offline-placeholder">
+      <div class="offline-content">
+        <el-icon :size="64" color="var(--el-text-color-secondary)"><WarningFilled /></el-icon>
+        <h2>插件市场需要在线模式</h2>
+        <p>当前处于离线模式，无法浏览和安装中心服务器上的插件。</p>
+        <p>你可以在 <strong>设置 → 通用 → 在线服务</strong> 中启用在线模式，或手动导入本地插件。</p>
+        <div class="offline-actions">
+          <el-button type="primary" @click="triggerFileInstall">
+            <el-icon><Upload /></el-icon>安装本地插件
+          </el-button>
+          <el-button @click="goToSettings">前往设置</el-button>
+        </div>
+      </div>
+    </div>
+
+    <template v-else>
 
     <!-- 更新提示 -->
     <el-alert
@@ -218,6 +238,7 @@
         <el-empty v-if="installedPlugins.length === 0" description="暂无已安装的插件" />
       </el-tab-pane>
     </el-tabs>
+    </template>
 
     <!-- 插件详情对话框 -->
     <el-dialog v-model="showDetailDialog" :title="currentPlugin?.name" width="700px">
@@ -418,11 +439,40 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Search, Setting, Refresh, Upload } from '@element-plus/icons-vue'
+import { Search, Setting, Refresh, Upload, WarningFilled } from '@element-plus/icons-vue'
 import { usePluginStore, type PluginInfo, type MarketPlugin } from '@/stores/plugin'
 import TechIcon from '@/components/icons/TechIcons.vue'
+import { useRouter } from 'vue-router'
 
 const pluginStore = usePluginStore()
+const router = useRouter()
+
+// 在线模式判断
+const isOnlineMode = computed(() => {
+  try {
+    const saved = localStorage.getItem('runixo_settings')
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      return parsed.server?.onlineMode === true
+    }
+  } catch {}
+  return false
+})
+
+function getServerUrl(): string {
+  try {
+    const saved = localStorage.getItem('runixo_settings')
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      return parsed.server?.url || 'https://runixo.top'
+    }
+  } catch {}
+  return 'https://runixo.top'
+}
+
+function goToSettings() {
+  router.push('/settings')
+}
 
 // 本地默认插件数据（备用）
 const defaultPlugins: MarketPlugin[] = [
@@ -840,10 +890,37 @@ onMounted(async () => {
   } catch (e) {
     console.error('[Plugins] Initialize failed:', e)
   }
-  try {
-    await pluginStore.loadMarketPlugins()
-  } catch (e) {
-    console.error('[Plugins] Load market plugins failed:', e)
+  if (isOnlineMode.value) {
+    try {
+      const serverUrl = getServerUrl()
+      const resp = await fetch(`${serverUrl}/api/v1/plugins/list`)
+      if (resp.ok) {
+        const data = await resp.json()
+        if (data.plugins?.length > 0) {
+          pluginStore.marketPlugins = data.plugins.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            version: p.version,
+            description: p.description,
+            author: p.author,
+            icon: p.icon || '',
+            iconBg: p.iconBg || '',
+            downloads: p.downloads || 0,
+            rating: p.rating || 0,
+            ratingCount: p.ratingCount || 0,
+            tags: p.tags || p.keywords || [],
+            category: p.category || 'tools',
+            official: p.official ?? true,
+            downloadUrl: p.download_url || '',
+            updatedAt: p.updatedAt || '',
+            features: p.features || []
+          }))
+        }
+      }
+    } catch (e) {
+      console.error('[Plugins] Load from server failed:', e)
+      ElMessage.warning('无法连接中心服务器，请检查网络或服务器地址')
+    }
   }
 })
 </script>
@@ -855,6 +932,17 @@ onMounted(async () => {
   .drop-hint {
     text-align: center; color: #fff; padding: 40px; border: 3px dashed var(--primary-color, #409eff); border-radius: 16px;
     p { margin-top: 12px; font-size: 18px; }
+  }
+}
+
+.offline-placeholder {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 400px; padding: 60px 20px;
+  .offline-content {
+    text-align: center; max-width: 480px;
+    h2 { margin: 20px 0 12px; color: var(--el-text-color-primary); }
+    p { color: var(--el-text-color-secondary); line-height: 1.6; margin: 8px 0; }
+    .offline-actions { margin-top: 24px; display: flex; gap: 12px; justify-content: center; }
   }
 }
 

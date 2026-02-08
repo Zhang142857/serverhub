@@ -170,16 +170,40 @@ export const usePluginStore = defineStore('plugin', () => {
   async function loadMarketPlugins(): Promise<void> {
     marketLoading.value = true
     try {
+      // 检查在线模式
+      const saved = localStorage.getItem('runixo_settings')
+      const settings = saved ? JSON.parse(saved) : {}
+      if (settings.server?.onlineMode && settings.server?.url) {
+        const resp = await fetch(`${settings.server.url}/api/v1/plugins/list`)
+        if (resp.ok) {
+          const data = await resp.json()
+          if (data.plugins?.length > 0) {
+            marketPlugins.value = data.plugins.map((p: any) => ({
+              id: p.id, name: p.name, version: p.version,
+              description: p.description, author: p.author,
+              icon: p.icon || '', iconBg: p.iconBg || '',
+              downloads: p.downloads || 0, rating: p.rating || 0,
+              ratingCount: p.ratingCount || 0,
+              tags: p.tags || p.keywords || [],
+              category: p.category || 'tools',
+              official: p.official ?? true,
+              downloadUrl: p.download_url || '',
+              updatedAt: p.updatedAt || '',
+              features: p.features || []
+            }))
+            return
+          }
+        }
+      }
+      // 离线或请求失败：尝试 IPC，再降级到默认数据
       const result = await window.electronAPI.plugin.getMarketPlugins()
       if (result && result.length > 0) {
         marketPlugins.value = result
       } else {
-        // API 返回空数组，使用默认数据
         marketPlugins.value = getDefaultMarketPlugins()
       }
     } catch (e) {
       console.error('[PluginStore] Failed to load market plugins:', e)
-      // 使用模拟数据
       marketPlugins.value = getDefaultMarketPlugins()
     } finally {
       marketLoading.value = false
