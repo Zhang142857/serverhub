@@ -3,10 +3,8 @@ package server
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"net"
