@@ -92,6 +92,7 @@ app.whenReady().then(async () => {
     const reqOptions = {
       method: options?.method || 'GET',
       headers: options?.headers || {},
+      family: 4,
     }
     return new Promise((resolve) => {
       const req = mod.request(url, reqOptions, (res: any) => {

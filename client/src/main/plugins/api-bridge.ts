@@ -476,7 +476,7 @@ export function setupPluginIPC(): void {
     const tmpPath = path.join(os.tmpdir(), `runixo-plugin-${Date.now()}.shplugin`)
     try {
       const buffer: Buffer = await new Promise((resolve, reject) => {
-        https.get(url, (res: any) => {
+        https.get(url, { family: 4 }, (res: any) => {
           if (res.statusCode !== 200) return reject(new Error(`Download failed: ${res.statusCode}`))
           const chunks: Buffer[] = []
           res.on('data', (c: Buffer) => chunks.push(c))
