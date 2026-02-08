@@ -76,16 +76,19 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          mv runixo-agent dist/
+          # 重命名为平台特定名称
+          mv runixo-agent dist/runixo-agent-${{ matrix.suffix }}
+          # 同时创建 tar.gz 版本
           cd dist
-          tar -czf runixo-agent_${{ matrix.suffix }}.tar.gz runixo-agent
-          rm runixo-agent
+          tar -czf runixo-agent-${{ matrix.suffix }}.tar.gz runixo-agent-${{ matrix.suffix }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: runixo-agent_${{ matrix.suffix }}
-          path: dist/runixo-agent_${{ matrix.suffix }}.tar.gz
+          path: |
+            dist/runixo-agent-${{ matrix.suffix }}
+            dist/runixo-agent-${{ matrix.suffix }}.tar.gz
 
   release:
     name: Release
@@ -104,7 +107,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd dist
-          sha256sum *.tar.gz > checksums.txt
+          sha256sum runixo-agent-* *.tar.gz > checksums.txt
           cat checksums.txt
 
       - name: Get version
@@ -158,6 +161,7 @@ jobs:
             ```
 
           files: |
+            dist/runixo-agent-*
             dist/*.tar.gz
             dist/checksums.txt
           draft: false
