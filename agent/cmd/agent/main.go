@@ -326,10 +326,10 @@ func generateSelfSignedCert(certFile, keyFile string) error {
 		Subject:               pkix.Name{Organization: []string{"Runixo Agent"}, CommonName: "runixo-agent"},
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour),
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
-		IsCA:                  false, // 服务器证书不应是 CA
+		IsCA:                  true, // 自签名证书需要 CA 标志，否则 Electron(BoringSSL) 无法验证
 		IPAddresses:           ips,
 		DNSNames:              []string{"localhost"},
 	}
