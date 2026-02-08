@@ -160,15 +160,6 @@ configure_firewall() {
 download_binary() {
     log_step "下载 Runixo Agent..."
     
-    # 获取最新版本
-    local latest_url="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
-    local latest_tag=$(curl -fsSL "$latest_url" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | head -1)
-    
-    if [ -z "$latest_tag" ]; then
-        log_error "无法获取最新版本，请检查网络或仓库是否有 Release"
-        exit 1
-    fi
-    
     # 检测架构
     local arch=$(uname -m)
     case "$arch" in
@@ -182,15 +173,14 @@ download_binary() {
     esac
     
     local filename="runixo-agent-linux-${arch}"
-    local url="https://github.com/${GITHUB_REPO}/releases/download/${latest_tag}/${filename}"
+    local url="https://github.com/${GITHUB_REPO}/releases/download/latest/${filename}"
     
-    log_info "版本: ${latest_tag} | 架构: ${arch}"
+    log_info "架构: ${arch}"
     
     local tmp=$(mktemp)
     if ! curl -fL --progress-bar -o "$tmp" "$url" 2>&1; then
         rm -f "$tmp"
         log_error "下载失败: $url"
-        log_error "请检查网络连接或确认 Release 中存在该文件"
         exit 1
     fi
     
