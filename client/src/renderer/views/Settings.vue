@@ -906,17 +906,18 @@
       </el-tab-pane>
     </el-tabs>
 
-    <div class="settings-footer">
-      <el-button type="primary" @click="saveSettings" :loading="saving">保存设置</el-button>
+    <div class="settings-footer" :class="{ 'sticky-top': hasChanges }">
+      <el-button type="primary" @click="saveSettings" :loading="saving" :disabled="!hasChanges">保存设置</el-button>
       <el-button @click="resetSettings">恢复默认</el-button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Link, Document, Monitor, Key, Lock, Upload, Download, Refresh, Warning, Cpu, Box, Connection } from '@element-plus/icons-vue'
+import { onBeforeRouteLeave } from 'vue-router'
 
 const activeTab = ref('general')
 const saving = ref(false)
@@ -1112,6 +1113,32 @@ const defaultSettings = {
 
 const settings = ref(JSON.parse(JSON.stringify(defaultSettings)))
 
+// 保存的设置快照，用于检测变更
+const savedSnapshot = ref('')
+
+const hasChanges = computed(() => {
+  return savedSnapshot.value !== '' && savedSnapshot.value !== JSON.stringify(settings.value)
+})
+
+onBeforeRouteLeave((_to, _from, next) => {
+  if (hasChanges.value) {
+    ElMessageBox.confirm('设置未保存，是否要保存？', '提示', {
+      confirmButtonText: '保存并离开',
+      cancelButtonText: '不保存',
+      distinguishCancelAndClose: true,
+      type: 'warning'
+    }).then(() => {
+      saveSettings()
+      next()
+    }).catch((action) => {
+      if (action === 'cancel') next()
+      else next(false)
+    })
+  } else {
+    next()
+  }
+})
+
 onMounted(() => { loadSettings(); refreshEmergencyStatus() })
 
 function loadSettings() {
@@ -1137,6 +1164,7 @@ function loadSettings() {
       }
     } catch { /* ignore */ }
   }
+  savedSnapshot.value = JSON.stringify(settings.value)
 }
 
 function saveSettings() {
@@ -1163,6 +1191,7 @@ function saveSettings() {
     } catch {}
     saving.value = false
     ElMessage.success('设置已保存')
+    savedSnapshot.value = JSON.stringify(settings.value)
   }, 300)
 }
 
@@ -1585,8 +1614,21 @@ function showRestoreDialog() {
   gap: 12px;
   justify-content: flex-end;
   margin-top: 24px;
-  padding-top: 24px;
+  padding: 16px 24px;
   border-top: 1px solid var(--border-color);
+  transition: all 0.3s ease;
+
+  &.sticky-top {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    margin: -24px -24px 24px;
+    padding: 16px 24px;
+    background: var(--bg-color, #1a1a2e);
+    border-top: none;
+    border-bottom: 2px solid var(--primary-color, #409eff);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  }
 }
 
 .shortcuts-list {
