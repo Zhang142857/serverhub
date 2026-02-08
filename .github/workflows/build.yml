@@ -6,45 +6,128 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   build-agent:
-    name: Build Agent
+    name: Build Agent (${{ matrix.suffix }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: linux-amd64
+          - goos: linux
+            goarch: arm64
+            suffix: linux-arm64
+          - goos: darwin
+            goarch: amd64
+            suffix: darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            suffix: darwin-arm64
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
           cache-dependency-path: agent/go.sum
-      
-      - name: Build Agent
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
         run: |
           cd agent
-          go build -v ./cmd/agent
+          go build -ldflags "-s -w" -o ../runixo-agent-${{ matrix.suffix }} ./cmd/agent
 
-  build-client:
-    name: Build Client
-    runs-on: ubuntu-latest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-${{ matrix.suffix }}
+          path: runixo-agent-${{ matrix.suffix }}
+
+  build-client-windows:
+    name: Build Client (Windows)
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - uses: pnpm/action-setup@v3
-        with:
-          version: 8
-      
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: client/pnpm-lock.yaml
-      
-      - name: Install dependencies
+
+      - run: npm install -g pnpm@8
+
+      - name: Install & Build
+        working-directory: client
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          cd client
-          pnpm install --no-frozen-lockfile
-      
-      - name: Build (Vite only)
+          pnpm install
+          npm run build:win
+          dir release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-windows
+          path: client/release/*.exe
+
+  build-client-linux:
+    name: Build Client (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm install -g pnpm@8
+
+      - name: Install & Build
+        working-directory: client
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          cd client
-          npx vite build
+          pnpm install
+          npm run build:linux
+          ls -la release/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-linux
+          path: |
+            client/release/*.AppImage
+            client/release/*.deb
+
+  build-client-macos:
+    name: Build Client (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm install -g pnpm@8
+
+      - name: Install & Build
+        working-directory: client
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pnpm install
+          npm run build:mac
+          ls -la release/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-macos
+          path: |
+            client/release/*.dmg
+            client/release/*.zip
