@@ -105,6 +105,10 @@ export function registerSshHandlers() {
           sendLog(win, '执行安装脚本...')
           const installRes = await sshExec(conn, installCmd)
           
+          // 调试：输出完整的安装脚本输出
+          sendLog(win, `[DEBUG] stdout length: ${installRes.stdout.length}`, 'info')
+          sendLog(win, `[DEBUG] stderr length: ${installRes.stderr.length}`, 'info')
+          
           if (installRes.code !== 0) {
             sendLog(win, `❌ 安装失败: ${installRes.stderr || installRes.stdout}`, 'error')
             conn.end()
@@ -115,6 +119,9 @@ export function registerSshHandlers() {
           
           // 解析输出中的 token 和证书（移除 ANSI 颜色代码）
           const output = (installRes.stdout + '\n' + installRes.stderr).replace(/\x1b\[[0-9;]*m/g, '')
+          sendLog(win, `[DEBUG] 清理后输出长度: ${output.length}`, 'info')
+          sendLog(win, `[DEBUG] 输出最后200字符: ${output.slice(-200)}`, 'info')
+          
           const tokenMatch = output.match(/Token:\s*([a-f0-9]{64})/i)
           const token = tokenMatch ? tokenMatch[1] : ''
           
