@@ -1,10 +1,11 @@
 import * as grpc from '@grpc/grpc-js'
 import * as protoLoader from '@grpc/proto-loader'
 import * as tls from 'tls'
+import * as crypto from 'crypto'
 import { join } from 'path'
 import { EventEmitter } from 'events'
 import { app } from 'electron'
-import { saveCertificate } from '../cert-store'
+import { saveCertificate, getCertificate } from '../cert-store'
 import type {
   ServerConfig,
   ApiSystemInfo,
@@ -85,6 +86,14 @@ export class GrpcClient extends EventEmitter {
     })
   }
 
+  // 计算 PEM 证书的 SHA256 指纹
+  private certFingerprint(pem: Buffer): string {
+    const der = pem.toString().match(/-----BEGIN CERTIFICATE-----\n([\s\S]+?)\n-----END CERTIFICATE-----/)
+    if (!der) return ''
+    const raw = Buffer.from(der[1].replace(/\n/g, ''), 'base64')
+    return crypto.createHash('sha256').update(raw).digest('hex')
+  }
+
   async connect(): Promise<void> {
     const PROTO_PATH = getProtoPath()
     const packageDefinition = await protoLoader.load(PROTO_PATH, {
@@ -99,10 +108,26 @@ export class GrpcClient extends EventEmitter {
 
     let credentials: grpc.ChannelCredentials
     if (this.config.useTls) {
-      // TOFU: 先获取服务器自签名证书，再用它作为信任根
-      const rootCert = await this.fetchServerCert()
+      // TOFU: 优先使用本地缓存的证书，首次连接时获取并保存
+      let rootCert: Buffer
+      const cachedCert = getCertificate(this.config.id)
+      if (cachedCert) {
+        rootCert = Buffer.from(cachedCert)
+      } else {
+        rootCert = await this.fetchServerCert()
+      }
+      const savedFingerprint = this.certFingerprint(rootCert)
       credentials = grpc.credentials.createSsl(rootCert, null, null, {
-        checkServerIdentity: () => undefined // 自签名证书跳过主机名验证
+        checkServerIdentity: (_host, cert) => {
+          // TOFU 指纹验证：确保证书与首次保存的一致
+          if (cert.raw) {
+            const peerFingerprint = crypto.createHash('sha256').update(cert.raw).digest('hex')
+            if (peerFingerprint !== savedFingerprint) {
+              return new Error('证书指纹不匹配，可能存在中间人攻击。如果服务器证书已更新，请删除本地缓存证书后重新连接。')
+            }
+          }
+          return undefined
+        }
       })
     } else {
       credentials = grpc.credentials.createInsecure()

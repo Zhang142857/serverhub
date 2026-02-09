@@ -6,6 +6,8 @@ vendor/
 # 包管理器缓存
 .pnpm-store/
 **/pnpm/store/
+**/AppData/
+C:*
 
 # 插件打包产物
 *.shplugin

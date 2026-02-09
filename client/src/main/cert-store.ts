@@ -11,6 +11,14 @@ function ensureCertDir() {
   }
 }
 
+// 验证 serverId 防止路径遍历
+function sanitizeServerId(serverId: string): string {
+  if (!/^[a-zA-Z0-9_-]+$/.test(serverId)) {
+    throw new Error('Invalid serverId: only alphanumeric, underscore and hyphen allowed')
+  }
+  return serverId
+}
+
 /**
  * 保存服务器证书
  * @param serverId 服务器 ID
@@ -18,7 +26,7 @@ function ensureCertDir() {
  */
 export function saveCertificate(serverId: string, certificate: string): void {
   ensureCertDir()
-  const certPath = join(CERT_DIR, `${serverId}.pem`)
+  const certPath = join(CERT_DIR, `${sanitizeServerId(serverId)}.pem`)
   writeFileSync(certPath, certificate, 'utf-8')
 }
 
@@ -28,7 +36,7 @@ export function saveCertificate(serverId: string, certificate: string): void {
  * @returns PEM 格式的证书内容，如果不存在返回 null
  */
 export function getCertificate(serverId: string): string | null {
-  const certPath = join(CERT_DIR, `${serverId}.pem`)
+  const certPath = join(CERT_DIR, `${sanitizeServerId(serverId)}.pem`)
   if (!existsSync(certPath)) {
     return null
   }
@@ -40,7 +48,7 @@ export function getCertificate(serverId: string): string | null {
  * @param serverId 服务器 ID
  */
 export function deleteCertificate(serverId: string): void {
-  const certPath = join(CERT_DIR, `${serverId}.pem`)
+  const certPath = join(CERT_DIR, `${sanitizeServerId(serverId)}.pem`)
   if (existsSync(certPath)) {
     require('fs').unlinkSync(certPath)
   }

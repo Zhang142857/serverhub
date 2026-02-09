@@ -85,6 +85,18 @@ app.whenReady().then(async () => {
 
   // 外部请求 IPC 代理（渲染进程不直接 fetch 外部 URL）
   ipcMain.handle('proxy:fetch', async (_, url: string, options?: { method?: string; headers?: Record<string, string>; body?: string }) => {
+    // SSRF 防护
+    let parsed: URL
+    try { parsed = new URL(url) } catch { return { status: 0, headers: {}, body: '' } }
+    const hostname = parsed.hostname
+    const blockedPatterns = ['localhost', '127.0.0.1', '0.0.0.0', '::1', '169.254.169.254']
+    const blockedPrefixes = ['10.', '172.16.', '172.17.', '172.18.', '172.19.', '172.20.', '172.21.', '172.22.', '172.23.', '172.24.', '172.25.', '172.26.', '172.27.', '172.28.', '172.29.', '172.30.', '172.31.', '192.168.']
+    if (blockedPatterns.includes(hostname) || blockedPrefixes.some(p => hostname.startsWith(p)) || hostname.startsWith('[')) {
+      return { status: 0, headers: {}, body: '' }
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { status: 0, headers: {}, body: '' }
+    }
     const https = require('https')
     const http = require('http')
     const { URL } = require('url')
