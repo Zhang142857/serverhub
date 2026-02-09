@@ -349,7 +349,13 @@ class PluginLoader extends EventEmitter {
     try {
       // 使用系统自带的解压工具
       if (process.platform === 'win32') {
-        execSync(`powershell -Command "Expand-Archive -Force -Path '${filePath}' -DestinationPath '${tmpDir}'"`)
+        const zipPath = filePath.replace(/\.shplugin$/, '.zip')
+        fs.copyFileSync(filePath, zipPath)
+        try {
+          execSync(`powershell -Command "Expand-Archive -Force -Path '${zipPath}' -DestinationPath '${tmpDir}'"`)
+        } finally {
+          try { fs.unlinkSync(zipPath) } catch {}
+        }
       } else {
         execSync(`unzip -o "${filePath}" -d "${tmpDir}"`)
       }
