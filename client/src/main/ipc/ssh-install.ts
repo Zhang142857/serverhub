@@ -99,7 +99,7 @@ export function registerSshHandlers() {
 
           // ===== 下载并执行安装脚本 =====
           sendLog(win, '下载安装脚本...')
-          const installScript = 'https://raw.githubusercontent.com/Zhang142857/runixo/main/scripts/install.sh'
+          const installScript = 'https://raw.githubusercontent.com/Zhang142857/runixo-agent/main/scripts/install.sh'
           const installCmd = sudoCmd(`bash -c "curl -fsSL ${installScript} | bash"`, rp)
           
           sendLog(win, '执行安装脚本...')
