@@ -1,6 +1,17 @@
 # 依赖
 node_modules/
 vendor/
+**/package-lock.json
+
+# 包管理器缓存
+.pnpm-store/
+**/pnpm/store/
+
+# 插件打包产物
+*.shplugin
+
+# Cloudflare
+.wrangler/
 
 # 构建产物
 dist/
