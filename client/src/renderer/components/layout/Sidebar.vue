@@ -142,11 +142,11 @@
           <span>服务器管理</span>
         </el-menu-item>
 
-        <!-- 扩展 -->
-        <el-sub-menu index="group-ext">
+        <!-- AI -->
+        <el-sub-menu index="group-ai">
           <template #title>
-            <el-icon><Grid /></el-icon>
-            <span>扩展</span>
+            <el-icon><ChatDotRound /></el-icon>
+            <span>AI</span>
           </template>
           <el-menu-item index="/ai">
             <el-icon><ChatDotRound /></el-icon>
@@ -160,18 +160,19 @@
             <el-icon><Setting /></el-icon>
             <span>AI 运维</span>
           </el-menu-item>
-          <el-menu-item index="/cloud">
-            <el-icon><Cloudy /></el-icon>
-            <span>云服务</span>
-          </el-menu-item>
+        </el-sub-menu>
+
+        <!-- 扩展 -->
+        <el-sub-menu index="group-ext">
+          <template #title>
+            <el-icon><Grid /></el-icon>
+            <span>扩展</span>
+          </template>
           <el-menu-item index="/plugins">
             <el-icon><Goods /></el-icon>
             <span>插件市场</span>
           </el-menu-item>
-        </el-sub-menu>
-
-        <!-- 插件动态菜单 -->
-        <template v-if="pluginMenus.length > 0">
+          <!-- 已安装插件动态菜单 -->
           <el-menu-item
             v-for="menu in pluginMenus"
             :key="menu.id"
@@ -179,9 +180,8 @@
           >
             <el-icon><component :is="getMenuIcon(menu.icon)" /></el-icon>
             <span>{{ menu.label }}</span>
-            <el-tag size="small" type="info" class="plugin-tag">插件</el-tag>
           </el-menu-item>
-        </template>
+        </el-sub-menu>
       </el-menu>
     </div>
 
