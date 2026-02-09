@@ -325,7 +325,7 @@ class PluginLoader extends EventEmitter {
 
     const plugin: LoadedPlugin = {
       manifest,
-      status: 'installed',
+      status: 'enabled',
       path: pluginPath,
       installedAt: new Date(),
       updatedAt: new Date()
@@ -368,7 +368,7 @@ class PluginLoader extends EventEmitter {
         this.plugins.delete(manifest.id)
       }
       fs.renameSync(tmpDir, targetPath)
-      const plugin: LoadedPlugin = { manifest, status: 'installed', path: targetPath, installedAt: new Date(), updatedAt: new Date() }
+      const plugin: LoadedPlugin = { manifest, status: 'enabled', path: targetPath, installedAt: new Date(), updatedAt: new Date() }
       this.plugins.set(manifest.id, plugin)
       this.savePluginStatus(manifest.id)
       this.emit('plugin:installed', manifest.id, plugin)
@@ -400,7 +400,7 @@ class PluginLoader extends EventEmitter {
 
     const plugin: LoadedPlugin = {
       manifest,
-      status: 'installed',
+      status: 'enabled',
       path: targetPath,
       installedAt: new Date(),
       updatedAt: new Date()
