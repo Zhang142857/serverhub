@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#0891b2"/>
+    </linearGradient>
+    <linearGradient id="r-stroke" x1="30" y1="28" x2="98" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fff" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#c7d2fe" stop-opacity="0.85"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <!-- Subtle shine -->
+  <rect width="128" height="128" rx="28" fill="url(#bg)" opacity="0"/>
+  <ellipse cx="40" cy="30" rx="50" ry="40" fill="white" opacity="0.08"/>
+  <!-- Letter R - clean geometric -->
+  <path d="M38 96V32h24c12 0 20 8 20 18s-6 16-14 18l18 28H72L58 70H52v26H38z M52 58h8c6 0 10-4 10-8s-4-8-10-8H52v16z" fill="url(#r-stroke)"/>
+  <!-- AI node dots -->
+  <circle cx="98" cy="38" r="4" fill="#a5f3fc" opacity="0.9"/>
+  <circle cx="106" cy="52" r="2.5" fill="#a5f3fc" opacity="0.6"/>
+  <line x1="98" y1="38" x2="106" y2="52" stroke="#a5f3fc" stroke-width="1.2" opacity="0.4"/>
+</svg>

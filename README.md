@@ -1,8 +1,8 @@
 <div align="center">
-  <img src="server/src/public/logo.svg" width="80" height="80" alt="Runixo">
+  <img src="assets/logo.svg" width="80" height="80" alt="Runixo">
   <h1>Runixo</h1>
   <p><strong>AI-Native Server Management Platform</strong></p>
-  <p>用自然语言管理你的服务器。安全优先，插件驱动。</p>
+  <p>安全优先的服务器管理平台。零暴露架构，AI 驱动运维。</p>
 
   <p>
     <a href="https://runixo.top">🌐 官网</a> ·
@@ -27,25 +27,50 @@
 
 ---
 
-## ✨ 为什么选择 Runixo？
+## 🔒 为什么需要 Runixo？
 
-传统服务器面板需要在服务器上开放 Web 端口，暴露在公网中。Runixo 完全不同：
+**传统服务器面板最大的问题是安全。**
 
-| | 传统面板 (宝塔/1Panel) | Runixo |
+它们需要在服务器上开放 Web 端口，面板本身就是一个暴露在公网的攻击面——一旦面板存在漏洞，攻击者可以直接获取服务器 root 权限。
+
+Runixo 从架构层面解决了这个问题：
+
+| | 传统 Web 面板 | Runixo |
 |---|---|---|
-| **安全模型** | 服务器开放 Web 端口，暴露在公网 | Agent 零 Web 端口，仅 gRPC + TLS 加密通信 |
-| **操作方式** | 浏览器登录面板，手动点击 | 桌面客户端 + 自然语言：*"重启 nginx 并查看日志"* |
-| **故障排查** | 自己 SSH 上去查日志、搜报错 | AI 自动诊断问题，给出修复建议 |
-| **扩展性** | 功能固定，等官方更新 | 插件生态，按需安装，支持自定义开发 |
-| **多服务器** | 每台服务器装一个面板 | 一个客户端管理所有服务器 |
+| **攻击面** | 服务器开放 Web 端口，面板暴露在公网 | **Agent 零 Web 端口**，不暴露任何 HTTP 服务 |
+| **通信安全** | HTTP/HTTPS，面板自身可能被中间人攻击 | **gRPC + TLS 端到端加密**，TOFU 证书指纹验证 |
+| **认证机制** | 用户名密码，容易被暴力破解 | **Token 认证 + 自动过期 + 暴力破解防护** |
+| **权限控制** | 面板拥有完整 root 权限 | **命令白名单 + 路径访问控制 + 审计日志** |
+| **更新安全** | 面板自更新，无校验 | **SHA256 校验和验证**，防止供应链攻击 |
+| **插件安全** | 插件直接运行在服务器 | **沙箱隔离 + 权限声明 + SSRF 防护** |
+
+> **核心理念：服务器上不应该运行任何 Web 服务来管理自己。**
 
 ---
 
-## 🔑 核心功能
+## 🔑 安全架构
 
-### 🔒 零暴露安全架构
+```
+┌─────────────────────────────────────────────────┐
+│          Runixo Client (你的电脑)                │
+│    Electron 桌面应用 · 不经过任何第三方服务器       │
+└──────────────────┬──────────────────────────────┘
+                   │ gRPC + TLS（端到端加密，直连）
+┌──────────────────▼──────────────────────────────┐
+│          Runixo Agent (你的服务器)               │
+│    零 Web 端口 · 命令白名单 · 路径控制 · 审计日志   │
+└─────────────────────────────────────────────────┘
+```
 
-Agent 不开放任何 Web 端口，所有通信通过 gRPC + TLS 端到端加密。支持 Token 认证、暴力破解防护、命令白名单、路径访问控制。
+- **零暴露**：Agent 不开放任何 Web 端口，攻击者无法通过浏览器访问
+- **直连加密**：客户端与 Agent 直接通信，TLS 端到端加密，不经过中间服务器
+- **TOFU 验证**：首次连接记录证书指纹，后续连接自动验证，防止中间人攻击
+- **最小权限**：命令白名单默认开启，禁止 `rm`/`chmod`/`sudo` 等危险操作
+- **审计追踪**：所有操作记录审计日志，可追溯每一条命令的执行
+
+---
+
+## ✨ 功能特性
 
 ### 🤖 AI 驱动运维
 
@@ -61,19 +86,15 @@ CPU、内存、磁盘、网络实时图表，进程管理，服务状态一目�
 
 ### 🌐 云服务集成
 
-Cloudflare DNS/SSL/缓存/Tunnel 管理，阿里云、腾讯云、DigitalOcean 等云平台集成。
+Cloudflare DNS/SSL/缓存/Tunnel，阿里云、腾讯云、DigitalOcean 等云平台集成。
 
 ### 🧩 插件生态
 
-通过插件扩展功能。官方提供 Cloudflare、Nginx、DevOps 助手等插件，也可以用 SDK 开发自己的插件。
+通过插件扩展功能。官方提供 Cloudflare、Nginx、DevOps 助手等插件，也可以用 [SDK](https://github.com/Zhang142857/runixo-sdk) 开发自己的插件。
 
-### 📁 文件管理
+### 📁 文件管理 & 💻 Web 终端
 
-可视化文件浏览器，支持上传、下载、编辑、权限管理，内置代码编辑器。
-
-### 💻 Web 终端
-
-内置 SSH 终端，支持多标签页，直接在客户端中操作服务器。
+可视化文件浏览器 + 内置 SSH 终端，支持多标签页。
 
 ---
 
@@ -101,7 +122,7 @@ Cloudflare DNS/SSL/缓存/Tunnel 管理，阿里云、腾讯云、DigitalOcean �
     <td><img src="screenshots/04-settings-ai.png" alt="AI 设置"></td>
   </tr>
   <tr>
-    <td align="center"><b>通用设置</b> — 外观与行为配置</td>
+    <td align="center"><b>通用设置</b></td>
     <td align="center"><b>AI 设置</b> — 模型与提供商配置</td>
   </tr>
 </table>
@@ -144,26 +165,6 @@ sudo runixo info
 
 ---
 
-## 🏗️ 架构
-
-```
-┌─────────────────────────────────────────────────┐
-│          Runixo Client (Electron)               │
-│    Vue 3 + TypeScript  │  AI Engine  │  Plugins │
-└──────────────────┬──────────────────────────────┘
-                   │ gRPC + TLS (端到端加密)
-┌──────────────────▼──────────────────────────────┐
-│          Runixo Agent (Go, ~15MB)               │
-│  命令执行 │ Docker │ 监控 │ 文件 │ 插件 │ 自动更新 │
-└─────────────────────────────────────────────────┘
-```
-
-- **Client**：Electron 桌面应用，Vue 3 + TypeScript，内置插件系统和 AI 引擎
-- **Agent**：单个 Go 二进制，<1% CPU 占用，无数据库依赖，支持 7 个平台
-- **通信**：gRPC + TLS 加密，Token 认证，暴力破解防护，命令白名单
-
----
-
 ## 📦 项目仓库
 
 | 仓库 | 说明 | 技术栈 |
@@ -174,28 +175,11 @@ sudo runixo info
 
 ---
 
-## 🧩 插件开发
-
-使用 [Runixo SDK](https://github.com/Zhang142857/runixo-sdk) 开发自定义插件：
-
-```bash
-npx runixo-sdk create my-plugin
-cd my-plugin && npm install && npm run build && npm run pack
-```
-
-将生成的 `.shplugin` 文件拖入客户端即可安装。详见 [插件开发指南](https://runixo.top/guide/plugins)。
-
----
-
 ## 🛠️ 本地开发
 
 ```bash
-# 克隆
 git clone https://github.com/Zhang142857/runixo.git
-cd runixo
-
-# 客户端开发
-cd client && pnpm install && pnpm electron:dev
+cd runixo/client && pnpm install && pnpm electron:dev
 ```
 
 ---
