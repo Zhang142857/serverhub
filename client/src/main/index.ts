@@ -1,5 +1,6 @@
-import { app, BrowserWindow, shell, session, ipcMain } from 'electron'
+import { app, BrowserWindow, shell, session, ipcMain, dialog } from 'electron'
 import { join } from 'path'
+import { autoUpdater } from 'electron-updater'
 import { setupIpcHandlers } from './ipc/handlers'
 import { setupPluginIPC } from './plugins/api-bridge'
 import { setupBackupHandlers } from './ipc/backup-handlers'
@@ -119,6 +120,56 @@ app.whenReady().then(async () => {
   // 初始化任务调度器和应用商店
   await initTaskScheduler()
   await initAppStore(serverConnections)
+
+  // 客户端自动更新（仅生产环境）
+  if (!isDev) {
+    autoUpdater.autoDownload = false
+    autoUpdater.autoInstallOnAppQuit = true
+
+    autoUpdater.on('update-available', (info) => {
+      dialog.showMessageBox(mainWindow!, {
+        type: 'info',
+        title: '发现新版本',
+        message: `Runixo ${info.version} 已发布，是否下载更新？`,
+        buttons: ['下载更新', '稍后提醒'],
+        defaultId: 0,
+      }).then(({ response }) => {
+        if (response === 0) {
+          autoUpdater.downloadUpdate()
+          mainWindow?.webContents.send('update:downloading')
+        }
+      })
+    })
+
+    autoUpdater.on('update-downloaded', () => {
+      dialog.showMessageBox(mainWindow!, {
+        type: 'info',
+        title: '更新就绪',
+        message: '更新已下载完成，重启应用以完成安装。',
+        buttons: ['立即重启', '稍后'],
+        defaultId: 0,
+      }).then(({ response }) => {
+        if (response === 0) autoUpdater.quitAndInstall()
+      })
+    })
+
+    autoUpdater.on('error', (err) => {
+      console.error('自动更新错误:', err.message)
+    })
+
+    // 延迟 5 秒检查，避免影响启动速度
+    setTimeout(() => autoUpdater.checkForUpdates(), 5000)
+  }
+
+  // IPC: 手动检查更新
+  ipcMain.handle('updater:check', async () => {
+    try {
+      const result = await autoUpdater.checkForUpdates()
+      return { available: !!result?.updateInfo, version: result?.updateInfo?.version }
+    } catch {
+      return { available: false }
+    }
+  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
