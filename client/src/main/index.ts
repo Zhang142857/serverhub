@@ -99,8 +99,6 @@ app.whenReady().then(async () => {
     }
     const https = require('https')
     const http = require('http')
-    const { URL } = require('url')
-    const parsed = new URL(url)
     const mod = parsed.protocol === 'https:' ? https : http
     const reqOptions = {
       method: options?.method || 'GET',
