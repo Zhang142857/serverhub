@@ -83,3 +83,7 @@ client/test-results/
 
 # 独立仓库
 server/
+
+# 独立子仓库
+runixo-agent/
+runixo-sdk/
