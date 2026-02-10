@@ -37,17 +37,40 @@ class ConversationStorage {
   async loadConversation(id: string): Promise<Conversation | null> {
     const filePath = `${this.dataPath}/${STORAGE_DIR}/${id}.json`
     try {
-      const data = await window.electronAPI.fsLocal.readFile(filePath)
+      const raw = await window.electronAPI.fsLocal.readFile(filePath)
+      // 尝试解密（兼容旧明文数据）
+      let data = raw
+      if (!raw.trim().startsWith('{')) {
+        try {
+          const decrypted = await window.electronAPI.secure.getCredential(`conv_${id}`)
+          if (decrypted) data = decrypted
+        } catch { /* 降级为明文 */ }
+      }
       return JSON.parse(data)
     } catch {
       return null
     }
   }
 
-  // 保存对话
+  // 保存对话（加密存储）
   async saveConversation(conversation: Conversation) {
     const filePath = `${this.dataPath}/${STORAGE_DIR}/${conversation.id}.json`
-    await window.electronAPI.fsLocal.writeFile(filePath, JSON.stringify(conversation, null, 2))
+    const jsonData = JSON.stringify(conversation, null, 2)
+
+    // 尝试加密存储
+    try {
+      const isAvailable = await window.electronAPI.secure.isEncryptionAvailable()
+      if (isAvailable) {
+        await window.electronAPI.secure.setCredential(`conv_${conversation.id}`, jsonData)
+        // 文件中存储占位符，实际数据在 secureStorage
+        await window.electronAPI.fsLocal.writeFile(filePath, `{"encrypted":true,"id":"${conversation.id}"}`)
+      } else {
+        await window.electronAPI.fsLocal.writeFile(filePath, jsonData)
+      }
+    } catch {
+      // 降级为明文
+      await window.electronAPI.fsLocal.writeFile(filePath, jsonData)
+    }
     
     // 更新索引
     const index = await this.getIndex()
