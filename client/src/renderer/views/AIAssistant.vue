@@ -255,11 +255,11 @@ import {
   Warning,
   Search
 } from '@element-plus/icons-vue'
-import { useAIStore } from '@/renderer/stores/ai'
-import { useServerStore } from '@/renderer/stores/server'
-import ChatMessage from '@/renderer/components/ai/ChatMessage.vue'
-import FileUpload from '@/renderer/components/ai/FileUpload.vue'
-import { useAIHotkeys } from '@/renderer/composables/useAIHotkeys'
+import { useAIStore } from '../stores/ai'
+import { useServerStore } from '../stores/server'
+import ChatMessage from '../components/ai/ChatMessage.vue'
+import FileUpload from '../components/ai/FileUpload.vue'
+import { useAIHotkeys } from '../composables/useAIHotkeys'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 

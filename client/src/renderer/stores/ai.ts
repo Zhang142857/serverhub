@@ -5,8 +5,8 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { conversationStorage } from '@/services/conversation-storage'
-import type { Conversation, Message, ConversationIndex } from '@/types/conversation'
+import { conversationStorage } from '../../services/conversation-storage'
+import type { Conversation, Message, ConversationIndex } from '../../types/conversation'
 
 export const useAIStore = defineStore('ai', () => {
   // ==================== 状态 ====================
@@ -231,7 +231,7 @@ export const useAIStore = defineStore('ai', () => {
 
   // ==================== 搜索 ====================
   async function searchConversations(query: string) {
-    const { searchService } = await import('@/services/search-service')
+    const { searchService } = await import('../../services/search-service')
     return await searchService.search(query)
   }
 

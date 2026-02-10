@@ -1,5 +1,5 @@
 // 对话存储服务（基于 Electron 文件系统）
-import type { Conversation, ConversationIndex, ExportData } from '@/types/conversation'
+import type { Conversation, ConversationIndex, ExportData } from '../types/conversation'
 
 const STORAGE_DIR = 'conversations'
 const INDEX_FILE = 'index.json'

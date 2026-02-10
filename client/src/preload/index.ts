@@ -295,6 +295,8 @@ const electronAPI: ElectronAPI = {
   app: {
     getVersion: (): Promise<string> =>
       ipcRenderer.invoke('app:getVersion'),
+    getPath: (name: string): Promise<string> =>
+      ipcRenderer.invoke('app:getPath', name)
   },
 
   // Shell
@@ -600,12 +602,6 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('appStore:uninstall', instanceId),
     getStats: (): Promise<any> =>
       ipcRenderer.invoke('appStore:getStats')
-  },
-
-  // 应用路径
-  app: {
-    getPath: (name: string): Promise<string> =>
-      ipcRenderer.invoke('app:getPath', name)
   },
 
   // 本地文件系统操作

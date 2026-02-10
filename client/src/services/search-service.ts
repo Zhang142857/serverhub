@@ -1,5 +1,5 @@
 // 对话搜索服务
-import type { Conversation, SearchResult } from '@/types/conversation'
+import type { Conversation, SearchResult } from '../types/conversation'
 import { conversationStorage } from './conversation-storage'
 
 class SearchService {

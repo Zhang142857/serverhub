@@ -42,7 +42,7 @@ import { ElMessage } from 'element-plus'
 import { ChatDotRound, InfoFilled, DocumentCopy, Refresh, Delete, Coin } from '@element-plus/icons-vue'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
-import type { Message } from '@/types/conversation'
+import type { Message } from '../../../types/conversation'
 
 const props = defineProps<{
   message: Message
