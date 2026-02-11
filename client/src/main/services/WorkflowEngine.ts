@@ -1,10 +1,43 @@
-import type {
-  WorkflowDefinition,
-  WorkflowStep,
-  ToolDefinition,
-  AgentDefinition
-} from '@runixo/plugin-types'
 import { EventEmitter } from 'events'
+
+interface WorkflowDefinition {
+  id: string
+  name: string
+  description: string
+  steps: WorkflowStep[]
+  icon?: string
+  category?: string
+}
+
+interface WorkflowStep {
+  id: string
+  type: 'tool' | 'condition' | 'loop'
+  config: {
+    tool?: string
+    params?: Record<string, any>
+    condition?: string
+    loopOver?: string
+  }
+  next?: string | string[]
+}
+
+interface ToolDefinition {
+  name: string
+  displayName: string
+  description: string
+  category: string
+  dangerous?: boolean
+  parameters: Record<string, any>
+  handler: (params: any) => Promise<any>
+}
+
+interface AgentDefinition {
+  id: string
+  name: string
+  description: string
+  systemPrompt: string
+  tools: string[]
+}
 
 /**
  * 工作流执行引擎
@@ -81,6 +114,10 @@ class WorkflowContext {
     })
   }
 
+  resolvePath(path: string): any {
+    return this.getByPath(path)
+  }
+
   private getByPath(path: string): any {
     return path.split('.').reduce((obj, key) => obj?.[key], this.variables)
   }
@@ -112,6 +149,7 @@ class WorkflowExecution {
         this.engine.emit('step:start', step.id)
         const result = await this.executeStep(step)
         this.context.setStepResult(step.id, result)
+        this.context.set('result', result)
         this.engine.emit('step:complete', step.id, result)
 
         this.currentStep = this.getNextStep(step, result)
@@ -144,9 +182,10 @@ class WorkflowExecution {
 
   private async evaluateCondition(step: WorkflowStep): Promise<boolean> {
     const { condition } = step.config
-    const result = this.context.get('result')
-    const fn = new Function('result', `return ${condition}`)
-    return fn(result)
+    if (!condition || typeof condition !== 'string') {
+      return false
+    }
+    return evaluateSafeCondition(condition, this.context)
   }
 
   private async executeLoop(step: WorkflowStep): Promise<any[]> {
@@ -188,6 +227,202 @@ class WorkflowExecution {
     }
     return undefined
   }
+}
+
+const IDENTIFIER_PATTERN = /^[a-zA-Z_$][\w$]*(\.[a-zA-Z_$][\w$]*)*$/
+
+function evaluateSafeCondition(expression: string, context: WorkflowContext): boolean {
+  const normalized = stripOuterParentheses(expression.trim())
+  if (!normalized) return false
+
+  const orParts = splitTopLevel(normalized, '||')
+  if (orParts.length > 1) {
+    return orParts.some(part => evaluateSafeCondition(part, context))
+  }
+
+  const andParts = splitTopLevel(normalized, '&&')
+  if (andParts.length > 1) {
+    return andParts.every(part => evaluateSafeCondition(part, context))
+  }
+
+  if (normalized.startsWith('!')) {
+    return !evaluateSafeCondition(normalized.slice(1), context)
+  }
+
+  const comparison = findTopLevelComparison(normalized)
+  if (comparison) {
+    const left = parseOperand(comparison.left, context)
+    const right = parseOperand(comparison.right, context)
+    switch (comparison.operator) {
+      case '===':
+        return left === right
+      case '!==':
+        return left !== right
+      case '==':
+        return left == right
+      case '!=':
+        return left != right
+      case '>':
+        return Number(left) > Number(right)
+      case '<':
+        return Number(left) < Number(right)
+      case '>=':
+        return Number(left) >= Number(right)
+      case '<=':
+        return Number(left) <= Number(right)
+      default:
+        return false
+    }
+  }
+
+  return Boolean(parseOperand(normalized, context))
+}
+
+function parseOperand(raw: string, context: WorkflowContext): unknown {
+  const token = stripOuterParentheses(raw.trim())
+
+  if (!token) return ''
+  if (token === 'true') return true
+  if (token === 'false') return false
+  if (token === 'null') return null
+  if (token === 'undefined') return undefined
+
+  if (/^-?\d+(\.\d+)?$/.test(token)) {
+    return Number(token)
+  }
+
+  if ((token.startsWith('"') && token.endsWith('"')) || (token.startsWith("'") && token.endsWith("'"))) {
+    return token.slice(1, -1)
+  }
+
+  if (IDENTIFIER_PATTERN.test(token)) {
+    return context.resolvePath(token)
+  }
+
+  throw new Error(`不支持的条件表达式片段: ${token}`)
+}
+
+function findTopLevelComparison(expression: string): { left: string; operator: string; right: string } | null {
+  const operators = ['===', '!==', '>=', '<=', '==', '!=', '>', '<']
+  let depth = 0
+  let quote: '"' | "'" | null = null
+
+  for (let i = 0; i < expression.length; i++) {
+    const ch = expression[i]
+
+    if (quote) {
+      if (ch === quote && expression[i - 1] !== '\\') quote = null
+      continue
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      continue
+    }
+
+    if (ch === '(') {
+      depth++
+      continue
+    }
+
+    if (ch === ')') {
+      depth--
+      continue
+    }
+
+    if (depth !== 0) continue
+
+    for (const operator of operators) {
+      if (expression.startsWith(operator, i)) {
+        return {
+          left: expression.slice(0, i),
+          operator,
+          right: expression.slice(i + operator.length)
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+function splitTopLevel(expression: string, separator: '||' | '&&'): string[] {
+  const parts: string[] = []
+  let depth = 0
+  let quote: '"' | "'" | null = null
+  let start = 0
+
+  for (let i = 0; i < expression.length; i++) {
+    const ch = expression[i]
+
+    if (quote) {
+      if (ch === quote && expression[i - 1] !== '\\') quote = null
+      continue
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      continue
+    }
+
+    if (ch === '(') {
+      depth++
+      continue
+    }
+
+    if (ch === ')') {
+      depth--
+      continue
+    }
+
+    if (depth === 0 && expression.startsWith(separator, i)) {
+      parts.push(expression.slice(start, i).trim())
+      i += separator.length - 1
+      start = i + 1
+    }
+  }
+
+  if (start === 0) return [expression]
+  parts.push(expression.slice(start).trim())
+  return parts
+}
+
+function stripOuterParentheses(expression: string): string {
+  let current = expression.trim()
+
+  while (current.startsWith('(') && current.endsWith(')') && hasOuterPair(current)) {
+    current = current.slice(1, -1).trim()
+  }
+
+  return current
+}
+
+function hasOuterPair(expression: string): boolean {
+  let depth = 0
+  let quote: '"' | "'" | null = null
+
+  for (let i = 0; i < expression.length; i++) {
+    const ch = expression[i]
+
+    if (quote) {
+      if (ch === quote && expression[i - 1] !== '\\') quote = null
+      continue
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      continue
+    }
+
+    if (ch === '(') depth++
+    if (ch === ')') depth--
+
+    if (depth === 0 && i < expression.length - 1) {
+      return false
+    }
+  }
+
+  return true
 }
 
 interface WorkflowResult {

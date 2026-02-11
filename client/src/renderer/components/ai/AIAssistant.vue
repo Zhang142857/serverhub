@@ -394,7 +394,8 @@ function useSuggestion(suggestion: string) {
 
 function formatMessage(content: string): string {
   // 增强的 Markdown 转换
-  return content
+  const escaped = escapeHtml(content)
+  return escaped
     // 代码块
     .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
     // 表格
@@ -417,6 +418,15 @@ function formatMessage(content: string): string {
     .replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>')
     // 换行
     .replace(/\n/g, '<br>')
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 function formatTime(date: Date): string {

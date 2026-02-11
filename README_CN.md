@@ -56,7 +56,7 @@
 **方式二：一键脚本**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Zhang142857/runixo/main/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Zhang142857/runixo/security-test/scripts/install.sh | sudo bash
 sudo runixo info
 ```
 

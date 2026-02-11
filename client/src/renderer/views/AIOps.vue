@@ -95,6 +95,7 @@ const aiStore = useAIStore()
 const selectedServer = ref<string | null>(serverStore.currentServerId)
 const customPrompt = ref('')
 const running = ref(false)
+const isProcessing = ref(false)
 const activeSkill = ref('')
 const results = ref<Array<{ title: string; status: string; content: string; suggestions?: string[] }>>([])
 
@@ -116,7 +117,18 @@ const skills = [
 ]
 
 function formatContent(content: string): string {
-  return content.replace(/\n/g, '<br>').replace(/`([^`]+)`/g, '<code>$1</code>')
+  return escapeHtml(content)
+    .replace(/\n/g, '<br>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 async function runSkill(skill: typeof skills[0]) {
@@ -139,36 +151,25 @@ async function executeOps(title: string, prompt: string) {
   const result: typeof results.value[0] = { title, status: 'running', content: '正在执行...', suggestions: [] }
   results.value.unshift(result)
 
-  let cleanupListener: (() => void) | null = null
-
   try {
-    aiStore.createConversation(true, selectedServer.value)
-    aiStore.addUserMessage(prompt)
-    aiStore.startProcessing('运维中...')
-    aiStore.createStreamingMessage()
+    if (!aiStore.currentConversation) {
+      await aiStore.createConversation({ agentId: 'diagnostics', serverId: selectedServer.value })
+    }
+    
+    await aiStore.addMessage({ role: 'user', content: prompt })
+    isProcessing.value = true
 
     let fullResponse = ''
-    cleanupListener = window.electronAPI.ai.onStreamDelta((delta: any) => {
-      if (delta.content) {
-        fullResponse += delta.content
-        result.content = fullResponse
-      }
-      if (delta.type === 'tool-confirm') {
-        window.electronAPI.ai.confirmTool(delta.confirmId, true)
-      }
-      aiStore.appendToLastMessage(delta)
+    const response = await window.electronAPI.ai.chat(prompt, {
+      serverId: selectedServer.value
     })
-
-    await window.electronAPI.ai.streamChat(prompt, {
-      serverId: selectedServer.value,
-      agentId: 'diagnostics',
-      history: []
-    })
+    
+    fullResponse = response
+    result.content = fullResponse
 
     result.status = fullResponse.includes('异常') || fullResponse.includes('错误') || fullResponse.includes('失败') ? 'error' : 'success'
     result.content = fullResponse || '执行完成'
 
-    // 从 AI 回复中提取建议
     const lines = fullResponse.split('\n')
     result.suggestions = lines
       .filter(l => /^[-•]\s*建议|^[-•]\s*推荐|^[-•]\s*可以/.test(l.trim()))
@@ -178,10 +179,8 @@ async function executeOps(title: string, prompt: string) {
     result.status = 'error'
     result.content = `执行失败: ${(e as Error).message}`
   } finally {
-    cleanupListener?.()
     running.value = false
-    aiStore.finalizeStreamingMessage()
-    aiStore.endProcessing()
+    isProcessing.value = false
   }
 }
 </script>

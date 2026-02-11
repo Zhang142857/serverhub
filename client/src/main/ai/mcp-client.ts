@@ -66,15 +66,12 @@ export class MCPClient extends EventEmitter {
 
     const proc = spawn(config.command, config.args || [], {
       env: {
-        // 只传递必要的环境变量，不泄漏完整 process.env
+        ...config.env,
+        // 安全修复：关键环境变量不可被覆盖
         PATH: process.env.PATH,
         HOME: process.env.HOME,
         LANG: process.env.LANG,
         TERM: process.env.TERM,
-        ...config.env,
-        // 安全修复：安全变量不可被覆盖
-        PATH: process.env.PATH,
-        HOME: process.env.HOME,
       },
       stdio: ['pipe', 'pipe', 'pipe']
     })

@@ -157,7 +157,7 @@
             type="textarea"
             :autosize="{ minRows: 1, maxRows: 6 }"
             placeholder="输入消息... (Ctrl+Enter 发送)"
-            @keydown="handleKeydown"
+            @keydown.enter.ctrl="handleKeydown"
             :disabled="aiStore.isProcessing"
             resize="none"
           />
@@ -242,16 +242,14 @@
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Plus,
-  ChatDotRound,
-  Delete,
-  More,
   Monitor,
+  ChatDotRound,
+  Plus,
+  Delete,
   Coin,
   Close,
   Promotion,
   Operation,
-  Setting,
   Warning,
   Search
 } from '@element-plus/icons-vue'
@@ -261,6 +259,7 @@ import ChatMessage from '../components/ai/ChatMessage.vue'
 import FileUpload from '../components/ai/FileUpload.vue'
 import { useAIHotkeys } from '../composables/useAIHotkeys'
 import MarkdownIt from 'markdown-it'
+import type { Options } from 'markdown-it'
 import hljs from 'highlight.js'
 
 const aiStore = useAIStore()
@@ -277,7 +276,6 @@ const searchQuery = ref('')
 const searchResults = ref<any[]>([])
 const isSearching = ref(false)
 
-// 快捷键
 useAIHotkeys({
   send: () => send(),
   newConversation: () => createNew(),
@@ -287,10 +285,10 @@ useAIHotkeys({
   exportConversation: () => exportConv()
 })
 
-const md = new MarkdownIt({
+const md: MarkdownIt = new MarkdownIt({
   html: false,
   linkify: true,
-  highlight: (str, lang) => {
+  highlight: (str: string, lang: string): string => {
     if (lang && hljs.getLanguage(lang)) {
       try {
         return hljs.highlight(str, { language: lang }).value
@@ -298,10 +296,10 @@ const md = new MarkdownIt({
     }
     return md.utils.escapeHtml(str)
   }
-})
+} as Options)
 
 const connectedServers = computed(() => {
-  return serverStore.servers.filter(s => s.connected)
+  return serverStore.servers.filter((s: any) => s.status === 'connected')
 })
 
 const quickActions = [
@@ -368,8 +366,8 @@ function sendQuick(prompt: string) {
   send()
 }
 
-function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Enter' && e.ctrlKey) {
+function handleKeydown(e: Event | KeyboardEvent) {
+  if (e instanceof KeyboardEvent && e.key === 'Enter' && e.ctrlKey) {
     e.preventDefault()
     send()
   }
@@ -388,7 +386,7 @@ async function deleteMsg(id: string) {
   await aiStore.deleteMessage(id)
 }
 
-async function regenerate(id: string) {
+async function regenerate(_id: string) {
   // TODO: 实现重新生成
   ElMessage.info('功能开发中')
 }

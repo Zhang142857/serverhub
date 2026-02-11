@@ -150,7 +150,7 @@ Cloudflare DNS/SSL/缓存/Tunnel，阿里云、腾讯云、DigitalOcean 等云�
 **方式二：命令行安装**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Zhang142857/runixo-agent/main/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Zhang142857/runixo/security-test/scripts/install.sh | sudo bash
 ```
 
 安装完成后查看连接信息：
