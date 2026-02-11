@@ -805,7 +805,7 @@ export function setupIpcHandlers() {
     }
   })
 
-  ipcMain.handle('fs:readFile', async (_, filePath: string) => {
+  ipcMain.handle('fs:readBinary', async (_, filePath: string) => {
     validateLocalPath(filePath)
     return fs.readFileSync(filePath)
   })
@@ -1341,6 +1341,18 @@ export function setupIpcHandlers() {
   // 返回serverConnections供其他模块使用
   return serverConnections
 }
+
+function assertLocalPath(filePath: string) {
+  const userDataDir = electronApp.getPath('userData')
+  const resolved = path.resolve(filePath)
+  if (!resolved.startsWith(userDataDir)) {
+    throw new Error('路径安全检查失败: 只允许访问 userData 目录')
+  }
+}
+
+ipcMain.handle('app:getPath', async (_, name: string) => {
+  return electronApp.getPath(name as any)
+})
 
 ipcMain.handle('fs:ensureDir', async (_, dirPath: string) => {
   assertLocalPath(dirPath)

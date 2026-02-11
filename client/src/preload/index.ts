@@ -284,7 +284,7 @@ const electronAPI: ElectronAPI = {
     packDirectory: (path: string, options?: { ignore?: string[] }): Promise<Buffer> =>
       ipcRenderer.invoke('fs:packDirectory', path, options),
     readFile: (path: string): Promise<Buffer> =>
-      ipcRenderer.invoke('fs:readFile', path)
+      ipcRenderer.invoke('fs:readBinary', path)
   },
 
   // 更新 & 版本
