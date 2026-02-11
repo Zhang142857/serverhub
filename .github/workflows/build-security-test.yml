@@ -1,0 +1,78 @@
+name: Build Client (Security Test)
+
+on:
+  push:
+    branches: [security-test]
+  pull_request:
+    branches: [security-test]
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install -g pnpm@8
+      - name: Install & Build
+        working-directory: client
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pnpm install
+          npm run build:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-windows-security-test
+          path: client/release/*.exe
+
+  build-linux:
+    name: Build (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install -g pnpm@8
+      - name: Install & Build
+        working-directory: client
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pnpm install
+          npm run build:linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-linux-security-test
+          path: |
+            client/release/*.AppImage
+            client/release/*.deb
+
+  build-macos:
+    name: Build (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install -g pnpm@8
+      - name: Install & Build
+        working-directory: client
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pnpm install
+          npm run build:mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-macos-security-test
+          path: |
+            client/release/*.dmg
+            client/release/*.zip
