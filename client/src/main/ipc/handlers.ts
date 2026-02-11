@@ -1342,32 +1342,6 @@ export function setupIpcHandlers() {
   return serverConnections
 }
 
-// 类型定义
-interface ServerConfig {
-  id: string
-  name: string
-  host: string
-  port: number
-  token: string
-  useTls?: boolean
-}
-
-
-// ==================== 文件系统操作（限制到 userData 目录）====================
-const { app: electronApp } = require('electron')
-const userDataDir = electronApp.getPath('userData')
-
-function assertLocalPath(filePath: string) {
-  const resolved = path.resolve(filePath)
-  if (!resolved.startsWith(userDataDir)) {
-    throw new Error(`路径安全检查失败: 只允许访问 userData 目录`)
-  }
-}
-
-ipcMain.handle('app:getPath', async (_, name: string) => {
-  return electronApp.getPath(name as any)
-})
-
 ipcMain.handle('fs:ensureDir', async (_, dirPath: string) => {
   assertLocalPath(dirPath)
   if (!fs.existsSync(dirPath)) {
