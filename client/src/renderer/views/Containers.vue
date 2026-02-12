@@ -1492,8 +1492,13 @@ async function updateContainerMetrics() {
 }
 
 watch(selectedServer, (newVal) => {
+  if (metricsInterval) {
+    clearInterval(metricsInterval)
+    metricsInterval = null
+  }
   if (newVal) {
     refreshContainers()
+    metricsInterval = setInterval(updateContainerMetrics, 3000)
   }
 }, { immediate: true })
 
@@ -1510,11 +1515,16 @@ watch(activeTab, (newVal) => {
 })
 
 onMounted(() => {
-  metricsInterval = setInterval(updateContainerMetrics, 3000)
+  if (selectedServer.value) {
+    metricsInterval = setInterval(updateContainerMetrics, 3000)
+  }
 })
 
 onUnmounted(() => {
-  if (metricsInterval) clearInterval(metricsInterval)
+  if (metricsInterval) {
+    clearInterval(metricsInterval)
+    metricsInterval = null
+  }
 })
 
 async function refreshContainers() {

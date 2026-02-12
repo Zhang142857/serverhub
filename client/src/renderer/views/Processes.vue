@@ -372,15 +372,20 @@ const totalCpu = computed(() => processes.value.reduce((sum, p) => sum + p.cpu_p
 const totalMemory = computed(() => processes.value.reduce((sum, p) => sum + p.memory_percent, 0))
 
 watch(selectedServer, (newVal) => {
+  if (refreshInterval) {
+    clearInterval(refreshInterval)
+    refreshInterval = null
+  }
   if (newVal) loadProcesses()
 }, { immediate: true })
 
 watch(autoRefresh, (newVal) => {
-  if (newVal) {
-    refreshInterval = setInterval(loadProcesses, 3000)
-  } else if (refreshInterval) {
+  if (refreshInterval) {
     clearInterval(refreshInterval)
     refreshInterval = null
+  }
+  if (newVal) {
+    refreshInterval = setInterval(loadProcesses, 3000)
   }
 })
 

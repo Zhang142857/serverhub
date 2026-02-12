@@ -278,15 +278,20 @@ const stoppedCount = computed(() => services.value.filter(s => s.status === 'sto
 const failedCount = computed(() => services.value.filter(s => s.status === 'failed').length)
 
 watch(selectedServer, (newVal) => {
+  if (refreshInterval) {
+    clearInterval(refreshInterval)
+    refreshInterval = null
+  }
   if (newVal) loadServices()
 }, { immediate: true })
 
 watch(autoRefresh, (newVal) => {
-  if (newVal) {
-    refreshInterval = setInterval(loadServices, 5000)
-  } else if (refreshInterval) {
+  if (refreshInterval) {
     clearInterval(refreshInterval)
     refreshInterval = null
+  }
+  if (newVal) {
+    refreshInterval = setInterval(loadServices, 5000)
   }
 })
 

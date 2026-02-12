@@ -174,22 +174,7 @@ export const useAIStore = defineStore('ai', () => {
         content: ''
       })
 
-      // 调用 AI API（流式）
-      let fullContent = ''
-      const unsubscribe = window.electronAPI.ai.onStream((chunk: string) => {
-        fullContent += chunk
-        streamingContent.value = fullContent
-        
-        // 实时更新消息
-        if (currentConversation.value) {
-          const msgIndex = currentConversation.value.messages.findIndex(m => m.id === aiMessageId)
-          if (msgIndex >= 0) {
-            currentConversation.value.messages[msgIndex].content = fullContent
-          }
-        }
-      })
-
-      await window.electronAPI.ai.chat(content, {
+      const response = await window.electronAPI.ai.chat(content, {
         serverId: context?.serverId || currentConversation.value?.serverId,
         conversationHistory: messages.value.slice(-10).map(m => ({
           role: m.role,
@@ -197,7 +182,7 @@ export const useAIStore = defineStore('ai', () => {
         }))
       })
 
-      unsubscribe()
+      const fullContent = response
 
       // 保存最终消息
       await updateMessage(aiMessageId, { content: fullContent })
